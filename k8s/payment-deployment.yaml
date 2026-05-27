@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: banking
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+        - name: payment-service
+          image: your-dockerhub/payment-service:latest
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql:3306/payment-servicedb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: banking
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - port: 8082
+      targetPort: 8082
+  type: ClusterIP

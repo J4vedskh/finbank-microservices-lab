@@ -1,0 +1,14 @@
+target/
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+*.log
+site/
+.venv/
+.tools/
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,36 @@
+site_name: FinBank Microservices Lab
+site_description: Cloud-native banking microservices portfolio built with Spring Boot, Kafka, Kubernetes, and observability.
+site_url: https://j4vedskh.github.io/finbank-microservices-lab/
+repo_url: https://github.com/J4vedskh/finbank-microservices-lab
+repo_name: J4vedskh/finbank-microservices-lab
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.instant
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: teal
+      accent: amber
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - API Reference: api-reference.md
+  - Runbook: runbook.md
+  - Roadmap: roadmap.md
+extra_css:
+  - stylesheets/extra.css
