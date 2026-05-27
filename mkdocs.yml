@@ -30,6 +30,7 @@ nav:
   - Overview: index.md
   - Architecture: architecture.md
   - API Reference: api-reference.md
+  - Delivery: delivery.md
   - Runbook: runbook.md
   - Roadmap: roadmap.md
 extra_css:
