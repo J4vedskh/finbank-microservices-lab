@@ -4,6 +4,11 @@ The services currently expose compact REST endpoints for account, payment, and
 transaction workflows. The API surface will grow with request validation,
 OpenAPI specs, examples, and generated reference pages.
 
+The first OpenAPI contract sketch lives at
+[`docs/api/openapi.yaml`](api/openapi.yaml). It documents the current scaffold
+and gives future work a stable place to add examples, validation responses, and
+contract-test coverage.
+
 ## Account Service
 
 Base URL: `http://localhost:8081`

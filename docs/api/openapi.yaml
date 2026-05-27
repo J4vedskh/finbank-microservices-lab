@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: FinBank Microservices API
+  version: 0.1.0
+  description: Contract sketch for the account, payment, and transaction services.
+servers:
+  - url: http://localhost:8081
+    description: Account Service
+  - url: http://localhost:8082
+    description: Payment Service
+  - url: http://localhost:8083
+    description: Transaction Service
+tags:
+  - name: Accounts
+  - name: Payments
+  - name: Transactions
+paths:
+  /accounts:
+    get:
+      tags: [Accounts]
+      summary: List accounts
+      responses:
+        "200":
+          description: Accounts returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+    post:
+      tags: [Accounts]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "200":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+  /payments:
+    get:
+      tags: [Payments]
+      summary: List payments
+      responses:
+        "200":
+          description: Payments returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+    post:
+      tags: [Payments]
+      summary: Create a payment and publish a payment event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentRequest"
+      responses:
+        "200":
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions
+      responses:
+        "200":
+          description: Transactions returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+  /transactions/account/{id}:
+    get:
+      tags: [Transactions]
+      summary: List transactions involving one account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Matching transactions returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customerName:
+          type: string
+          example: Asha Mehta
+        balance:
+          type: number
+          format: decimal
+          example: 5000.00
+    CreateAccountRequest:
+      type: object
+      required: [customerName, balance]
+      properties:
+        customerName:
+          type: string
+          example: Asha Mehta
+        balance:
+          type: number
+          format: decimal
+          example: 5000.00
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fromAccount:
+          type: integer
+          format: int64
+        toAccount:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+          example: CREATED
+    CreatePaymentRequest:
+      type: object
+      required: [fromAccount, toAccount, amount]
+      properties:
+        fromAccount:
+          type: integer
+          format: int64
+          example: 1
+        toAccount:
+          type: integer
+          format: int64
+          example: 2
+        amount:
+          type: number
+          format: decimal
+          example: 750.00
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fromAccount:
+          type: integer
+          format: int64
+        toAccount:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          format: decimal
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          example: COMPLETED
