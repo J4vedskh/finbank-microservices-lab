@@ -55,3 +55,5 @@ flowchart LR
 This repository starts as a working scaffold and grows through daily, reviewable
 pull requests. Each change is intended to be small enough to inspect and useful
 enough to improve the project.
+
+Follow the visible delivery history in the [progress log](progress-log.md).

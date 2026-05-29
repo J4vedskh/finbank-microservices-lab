@@ -31,6 +31,7 @@ nav:
   - Architecture: architecture.md
   - API Reference: api-reference.md
   - Delivery: delivery.md
+  - Progress Log: progress-log.md
   - Runbook: runbook.md
   - Roadmap: roadmap.md
 extra_css:
