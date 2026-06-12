@@ -24,6 +24,7 @@ flowchart TD
 | 2026-05-27 | Delivery | Documented the daily PR, verification, and squash-merge workflow. | Docs build and PR checks |
 | 2026-05-29 | Documentation | Added this progress log so daily improvements are visible from the live documentation portal. | `mkdocs build --strict` |
 | 2026-06-12 | Observability | Added an observability guide with signal ownership, dashboard slices, alert candidates, and trace flow diagrams. | `mkdocs build --strict` |
+| 2026-06-12 | Resilience | Added payment resilience notes covering idempotency, retry boundaries, and failure handling. | `mkdocs build --strict` |
 
 ## Upcoming Focus
 
@@ -33,6 +34,7 @@ flowchart TD
 | Quality | Add focused controller or service tests for the first happy paths. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
+| Resilience | Add idempotency-key handling and duplicate payment request tests. |
 
 ## Review Standard
 

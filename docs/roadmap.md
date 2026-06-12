@@ -28,9 +28,10 @@ gantt
 | 1 | Add DTOs and validation to account and payment APIs |
 | 2 | Add service-layer boundaries before controllers call repositories |
 | 3 | Add integration tests with H2 or Testcontainers |
-| 4 | Add OpenAPI YAML and Swagger UI documentation |
-| 5 | Add health probes and resource limits to Kubernetes manifests |
-| 6 | Add Prometheus dashboard documentation and screenshots |
+| 4 | Add idempotency-key handling for payment creation |
+| 5 | Add OpenAPI YAML and Swagger UI documentation |
+| 6 | Add health probes and resource limits to Kubernetes manifests |
+| 7 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 
