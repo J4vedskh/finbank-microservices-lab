@@ -30,6 +30,7 @@ nav:
   - Overview: index.md
   - Architecture: architecture.md
   - Observability: observability.md
+  - Resilience: resilience.md
   - API Reference: api-reference.md
   - Delivery: delivery.md
   - Progress Log: progress-log.md
