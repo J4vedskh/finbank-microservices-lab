@@ -66,6 +66,9 @@ flowchart LR
     Traces --> Jaeger["Jaeger trace search"]
 ```
 
+The detailed signal plan is tracked in the
+[observability guide](observability.md).
+
 ## Design Direction
 
 The lab will evolve toward realistic service contracts, validation, error
