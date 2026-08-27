@@ -152,19 +152,25 @@ components:
           example: CREATED
     CreatePaymentRequest:
       type: object
+      description: Client input for a payment; the service assigns the payment id and status.
       required: [fromAccount, toAccount, amount]
       properties:
         fromAccount:
           type: integer
           format: int64
+          minimum: 1
           example: 1
         toAccount:
           type: integer
           format: int64
+          minimum: 1
+          description: Must identify an account different from `fromAccount`.
           example: 2
         amount:
           type: number
           format: decimal
+          minimum: 0
+          exclusiveMinimum: true
           example: 750.00
     Transaction:
       type: object
