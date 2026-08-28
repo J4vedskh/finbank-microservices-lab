@@ -16,19 +16,28 @@ owns its runtime, API surface, persistence model, and operational metadata.
 ```mermaid
 sequenceDiagram
     participant Client
+    participant API as Payment Controller
     participant Payments as Payment Service
     participant DB as Payment DB
     participant Kafka as Kafka payments topic
     participant Ledger as Transaction Service
     participant LedgerDB as Transaction DB
 
-    Client->>Payments: POST /payments
+    Client->>API: POST /payments
+    API->>Payments: Validated CreatePaymentRequest
     Payments->>DB: Save payment as CREATED
-    Payments->>Kafka: Publish payment event
-    Payments-->>Client: Return payment id and status
+    Payments->>Kafka: Request asynchronous event publication
+    Payments-->>API: Return payment id and status
+    API-->>Client: HTTP 200 payment response
     Kafka-->>Ledger: Deliver payment event
     Ledger->>LedgerDB: Save transaction as COMPLETED
 ```
+
+`KafkaTemplate.send` is asynchronous in this increment. The service boundary
+guarantees that the send request happens after persistence, but it does not yet
+guarantee broker acknowledgement or recovery from a later delivery failure.
+Delivery state, retry, and outbox policy remain tracked in the
+[resilience guide](resilience.md).
 
 ## Deployment Topology
 

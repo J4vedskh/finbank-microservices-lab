@@ -1,7 +1,8 @@
 package com.banking.payment.controller;
 
+import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
-import com.banking.payment.repository.PaymentRepository;
+import com.banking.payment.service.PaymentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -10,18 +11,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -33,18 +33,23 @@ class PaymentControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private PaymentRepository paymentRepository;
-
-    @MockBean
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private PaymentService paymentService;
 
     @Test
-    void createPayment_validRequest_savesCreatedPaymentAndPublishesOneEvent() throws Exception {
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
-            Payment payment = invocation.getArgument(0);
-            payment.setId(42L);
-            return payment;
-        });
+    void listPayments_delegatesToService() throws Exception {
+        when(paymentService.findAll()).thenReturn(List.of(savedPayment()));
+
+        mockMvc.perform(get("/payments"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(42))
+                .andExpect(jsonPath("$[0].status").value("CREATED"));
+
+        verify(paymentService).findAll();
+    }
+
+    @Test
+    void createPayment_validRequest_delegatesValidatedInputToService() throws Exception {
+        when(paymentService.create(any(CreatePaymentRequest.class))).thenReturn(savedPayment());
 
         mockMvc.perform(post("/payments")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -62,14 +67,12 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.amount").value(750.00))
                 .andExpect(jsonPath("$.status").value("CREATED"));
 
-        ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
-        verify(paymentRepository).save(paymentCaptor.capture());
-        Payment savedPayment = paymentCaptor.getValue();
-        assertThat(savedPayment.getFromAccount()).isEqualTo(1L);
-        assertThat(savedPayment.getToAccount()).isEqualTo(2L);
-        assertThat(savedPayment.getAmount()).isEqualByComparingTo(new BigDecimal("750.00"));
-        assertThat(savedPayment.getStatus()).isEqualTo("CREATED");
-        verify(kafkaTemplate).send("payments", "42|1|2|750.00");
+        ArgumentCaptor<CreatePaymentRequest> requestCaptor =
+                ArgumentCaptor.forClass(CreatePaymentRequest.class);
+        verify(paymentService).create(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().fromAccount()).isEqualTo(1L);
+        assertThat(requestCaptor.getValue().toAccount()).isEqualTo(2L);
+        assertThat(requestCaptor.getValue().amount()).isEqualByComparingTo("750.00");
     }
 
     @ParameterizedTest
@@ -122,13 +125,7 @@ class PaymentControllerTest {
 
     @Test
     void createPayment_clientCannotOverrideServerOwnedIdOrStatus() throws Exception {
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
-            Payment payment = invocation.getArgument(0);
-            assertThat(payment.getId()).isNull();
-            assertThat(payment.getStatus()).isEqualTo("CREATED");
-            payment.setId(42L);
-            return payment;
-        });
+        when(paymentService.create(any(CreatePaymentRequest.class))).thenReturn(savedPayment());
 
         mockMvc.perform(post("/payments")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -145,8 +142,12 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.id").value(42))
                 .andExpect(jsonPath("$.status").value("CREATED"));
 
-        verify(paymentRepository).save(any(Payment.class));
-        verify(kafkaTemplate).send("payments", "42|1|2|750.00");
+        ArgumentCaptor<CreatePaymentRequest> requestCaptor =
+                ArgumentCaptor.forClass(CreatePaymentRequest.class);
+        verify(paymentService).create(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().fromAccount()).isEqualTo(1L);
+        assertThat(requestCaptor.getValue().toAccount()).isEqualTo(2L);
+        assertThat(requestCaptor.getValue().amount()).isEqualByComparingTo("750.00");
     }
 
     private void assertBadRequestWithoutSideEffects(String request) throws Exception {
@@ -155,7 +156,16 @@ class PaymentControllerTest {
                         .content(request))
                 .andExpect(status().isBadRequest());
 
-        verifyNoInteractions(paymentRepository);
-        verify(kafkaTemplate, never()).send(anyString(), anyString());
+        verifyNoInteractions(paymentService);
+    }
+
+    private Payment savedPayment() {
+        Payment payment = new Payment();
+        payment.setId(42L);
+        payment.setFromAccount(1L);
+        payment.setToAccount(2L);
+        payment.setAmount(new BigDecimal("750.00"));
+        payment.setStatus("CREATED");
+        return payment;
     }
 }
