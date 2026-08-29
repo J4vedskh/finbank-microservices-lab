@@ -44,6 +44,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Account"
+        "400":
+          description: Customer name or opening balance failed validation
   /payments:
     get:
       tags: [Payments]
@@ -110,10 +112,12 @@ components:
   schemas:
     Account:
       type: object
+      description: Persisted account; the service assigns the account id.
       properties:
         id:
           type: integer
           format: int64
+          readOnly: true
         customerName:
           type: string
           example: Asha Mehta
@@ -123,14 +127,19 @@ components:
           example: 5000.00
     CreateAccountRequest:
       type: object
+      description: Client input for account creation; the service assigns the account id.
       required: [customerName, balance]
       properties:
         customerName:
           type: string
+          minLength: 1
+          pattern: '.*\S.*'
+          description: Must contain at least one non-whitespace character.
           example: Asha Mehta
         balance:
           type: number
           format: decimal
+          minimum: 0
           example: 5000.00
     Payment:
       type: object

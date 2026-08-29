@@ -25,8 +25,8 @@ gantt
 
 | Priority | Improvement |
 | --- | --- |
-| 1 | Add DTOs and validation to account and payment APIs |
-| 2 | Add service-layer boundaries before controllers call repositories (payment complete; account next) |
+| 1 | Completed: add DTOs and validation to account and payment APIs |
+| 2 | Completed: add service-layer boundaries before controllers call repositories |
 | 3 | Add integration tests with H2 or Testcontainers |
 | 4 | Add idempotency-key handling for payment creation |
 | 5 | Add OpenAPI YAML and Swagger UI documentation |
