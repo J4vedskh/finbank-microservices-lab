@@ -27,7 +27,7 @@ gantt
 | --- | --- |
 | 1 | Completed: add DTOs and validation to account and payment APIs |
 | 2 | Completed: add service-layer boundaries before controllers call repositories |
-| 3 | Add integration tests with H2 or Testcontainers |
+| 3 | In progress: account H2 integration coverage complete; payment persistence coverage next |
 | 4 | Add idempotency-key handling for payment creation |
 | 5 | Add OpenAPI YAML and Swagger UI documentation |
 | 6 | Add health probes and resource limits to Kubernetes manifests |
