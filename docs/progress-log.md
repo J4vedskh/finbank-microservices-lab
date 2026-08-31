@@ -29,13 +29,14 @@ flowchart TD
 | 2026-08-28 | Payment architecture | Moved payment persistence and the asynchronous Kafka send request behind a tested service boundary so the controller owns only HTTP concerns. | `mvn -T 1C clean test` |
 | 2026-08-29 | Account API | Added a validated account creation contract and moved persistence behind a tested service boundary with server-owned identity. | `mvn -T 1C clean test` |
 | 2026-08-30 | Account persistence | Added an H2-backed JPA slice test proving generated identity, persisted account fields, and service-level listing without Docker. | `mvn -T 1C clean test` |
+| 2026-08-31 | Payment persistence | Added H2-backed JPA coverage proving generated payment identity, persisted state, service listing, and event payload construction without Docker. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
 | Backend | Add account lookup and update contracts behind the account service. |
-| Quality | Add H2 persistence coverage for the payment service happy path. |
+| Quality | Add H2 persistence coverage for the transaction ledger path. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
 | Resilience | Add idempotency-key handling and duplicate payment request tests. |
