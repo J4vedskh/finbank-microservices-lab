@@ -30,13 +30,14 @@ flowchart TD
 | 2026-08-29 | Account API | Added a validated account creation contract and moved persistence behind a tested service boundary with server-owned identity. | `mvn -T 1C clean test` |
 | 2026-08-30 | Account persistence | Added an H2-backed JPA slice test proving generated identity, persisted account fields, and service-level listing without Docker. | `mvn -T 1C clean test` |
 | 2026-08-31 | Payment persistence | Added H2-backed JPA coverage proving generated payment identity, persisted state, service listing, and event payload construction without Docker. | `mvn -T 1C clean test` |
+| 2026-09-01 | Transaction persistence | Added H2-backed JPA coverage proving generated transaction identity, timestamps, persisted fields, and source/destination account-history queries without Docker. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add account lookup and update contracts behind the account service. |
-| Quality | Add H2 persistence coverage for the transaction ledger path. |
+| Backend | Introduce a transaction service boundary and explicit event error handling. |
+| Quality | Add malformed-event and duplicate-ledger tests after the transaction boundary exists. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
 | Resilience | Add idempotency-key handling and duplicate payment request tests. |
