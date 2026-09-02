@@ -31,13 +31,14 @@ flowchart TD
 | 2026-08-30 | Account persistence | Added an H2-backed JPA slice test proving generated identity, persisted account fields, and service-level listing without Docker. | `mvn -T 1C clean test` |
 | 2026-08-31 | Payment persistence | Added H2-backed JPA coverage proving generated payment identity, persisted state, service listing, and event payload construction without Docker. | `mvn -T 1C clean test` |
 | 2026-09-01 | Transaction persistence | Added H2-backed JPA coverage proving generated transaction identity, timestamps, persisted fields, and source/destination account-history queries without Docker. | `mvn -T 1C clean test` |
+| 2026-09-02 | Transaction architecture | Moved HTTP reads and payment-event ledger writes behind a tested service boundary, separated the Kafka listener, and made malformed events fail visibly instead of being silently discarded. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Introduce a transaction service boundary and explicit event error handling. |
-| Quality | Add malformed-event and duplicate-ledger tests after the transaction boundary exists. |
+| Backend | Persist payment event identity and reject duplicate ledger entries. |
+| Quality | Define Kafka retry/dead-letter policy and test transient persistence failures. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
 | Resilience | Add idempotency-key handling and duplicate payment request tests. |

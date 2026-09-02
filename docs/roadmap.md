@@ -26,7 +26,7 @@ gantt
 | Priority | Improvement |
 | --- | --- |
 | 1 | Completed: add DTOs and validation to account and payment APIs |
-| 2 | In progress: account and payment service boundaries complete; transaction boundary next |
+| 2 | Completed: add service-layer boundaries for account, payment, and transaction flows |
 | 3 | Completed: add H2 persistence coverage for account, payment, and transaction data |
 | 4 | Add idempotency-key handling for payment creation |
 | 5 | Add OpenAPI YAML and Swagger UI documentation |
