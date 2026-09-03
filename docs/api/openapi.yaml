@@ -180,6 +180,7 @@ components:
           format: decimal
           minimum: 0
           exclusiveMinimum: true
+          multipleOf: 0.01
           example: 750.00
     Transaction:
       type: object
@@ -187,6 +188,10 @@ components:
         id:
           type: integer
           format: int64
+        paymentId:
+          type: integer
+          format: int64
+          description: Payment event identity used to make ledger writes idempotent.
         fromAccount:
           type: integer
           format: int64

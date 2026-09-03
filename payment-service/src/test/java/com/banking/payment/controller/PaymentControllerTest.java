@@ -103,6 +103,13 @@ class PaymentControllerTest {
     }
 
     @Test
+    void createPayment_amountWithMoreThanTwoDecimals_returnsBadRequestWithoutSideEffects() throws Exception {
+        assertBadRequestWithoutSideEffects(
+                "{\"fromAccount\":1,\"toAccount\":2,\"amount\":750.001}"
+        );
+    }
+
+    @Test
     void createPayment_missingAmount_returnsBadRequestWithoutSideEffects() throws Exception {
         assertBadRequestWithoutSideEffects("""
                 {
