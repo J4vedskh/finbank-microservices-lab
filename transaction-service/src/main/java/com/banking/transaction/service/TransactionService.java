@@ -2,10 +2,13 @@ package com.banking.transaction.service;
 
 import com.banking.transaction.entity.Transaction;
 import com.banking.transaction.repository.TransactionRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 public class TransactionService {
@@ -29,12 +32,41 @@ public class TransactionService {
     public Transaction recordPaymentEvent(String payload) {
         PaymentEvent paymentEvent = parse(payload);
 
+        return transactionRepository.findByPaymentId(paymentEvent.paymentId())
+                .map(existing -> acceptReplay(existing, paymentEvent))
+                .orElseGet(() -> persist(paymentEvent));
+    }
+
+    private Transaction persist(PaymentEvent paymentEvent) {
         Transaction transaction = new Transaction();
+        transaction.setPaymentId(paymentEvent.paymentId());
         transaction.setFromAccount(paymentEvent.fromAccount());
         transaction.setToAccount(paymentEvent.toAccount());
         transaction.setAmount(paymentEvent.amount());
         transaction.setStatus("COMPLETED");
-        return transactionRepository.save(transaction);
+
+        try {
+            return transactionRepository.saveAndFlush(transaction);
+        } catch (DataIntegrityViolationException exception) {
+            return transactionRepository.findByPaymentId(paymentEvent.paymentId())
+                    .map(existing -> acceptReplay(existing, paymentEvent))
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+    private Transaction acceptReplay(Transaction existing, PaymentEvent paymentEvent) {
+        if (sameBusinessEvent(existing, paymentEvent)) {
+            return existing;
+        }
+        throw new PaymentEventConflictException(paymentEvent.paymentId());
+    }
+
+    private boolean sameBusinessEvent(Transaction existing, PaymentEvent paymentEvent) {
+        return Objects.equals(existing.getPaymentId(), paymentEvent.paymentId())
+                && Objects.equals(existing.getFromAccount(), paymentEvent.fromAccount())
+                && Objects.equals(existing.getToAccount(), paymentEvent.toAccount())
+                && existing.getAmount() != null
+                && existing.getAmount().compareTo(paymentEvent.amount()) == 0;
     }
 
     private PaymentEvent parse(String payload) {
@@ -51,17 +83,13 @@ public class TransactionService {
             long paymentId = positiveLong(parts[0], "paymentId");
             long fromAccount = positiveLong(parts[1], "fromAccount");
             long toAccount = positiveLong(parts[2], "toAccount");
-            BigDecimal amount = new BigDecimal(parts[3]);
+            BigDecimal amount = normalizedAmount(parts[3]);
 
             if (fromAccount == toAccount) {
                 throw new MalformedPaymentEventException(
                         "source and destination accounts must be different"
                 );
             }
-            if (amount.signum() <= 0) {
-                throw new MalformedPaymentEventException("amount must be positive");
-            }
-
             return new PaymentEvent(paymentId, fromAccount, toAccount, amount);
         } catch (NumberFormatException exception) {
             throw new MalformedPaymentEventException(EXPECTED_FORMAT, exception);
@@ -74,6 +102,21 @@ public class TransactionService {
             throw new MalformedPaymentEventException(fieldName + " must be positive");
         }
         return parsed;
+    }
+
+    private BigDecimal normalizedAmount(String value) {
+        BigDecimal amount = new BigDecimal(value);
+        if (amount.signum() <= 0) {
+            throw new MalformedPaymentEventException("amount must be positive");
+        }
+        try {
+            return amount.setScale(2, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException exception) {
+            throw new MalformedPaymentEventException(
+                    "amount must have at most two decimal places",
+                    exception
+            );
+        }
     }
 
     private record PaymentEvent(

@@ -33,6 +33,7 @@ class TransactionControllerTest {
         mockMvc.perform(get("/transactions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(99))
+                .andExpect(jsonPath("$[0].paymentId").value(42))
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"));
 
         verify(transactionService).findAll();
@@ -53,6 +54,7 @@ class TransactionControllerTest {
     private Transaction savedTransaction() {
         Transaction transaction = new Transaction();
         transaction.setId(99L);
+        transaction.setPaymentId(42L);
         transaction.setFromAccount(1L);
         transaction.setToAccount(2L);
         transaction.setAmount(new BigDecimal("750.00"));

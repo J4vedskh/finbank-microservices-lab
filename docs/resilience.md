@@ -10,7 +10,7 @@ rules before they are implemented in service code.
 | --- | --- | --- |
 | Prevent duplicate charges | Require an idempotency key for payment creation. | Payment Service request validation |
 | Make retries safe | Return the original payment result when the same key is repeated. | Payment lookup by idempotency key |
-| Keep ledger writes consistent | Process each payment event once per transaction id. | Transaction Service duplicate detection |
+| Keep ledger writes consistent | Process each payment event once per payment id. | Implemented with persisted payment identity and database uniqueness |
 | Expose recoverable failures | Distinguish validation, downstream, and retryable failures. | API error model and status field |
 | Preserve auditability | Store request key, payment id, event id, and ledger id together. | Payment and transaction persistence |
 
@@ -47,6 +47,17 @@ sequenceDiagram
 | Payment Service to Kafka | Service retries publish failures before marking payment pending. | Event is acknowledged or payment enters recovery state. |
 | Transaction Service consumer | Consumer retries event processing with backoff. | Ledger write succeeds or event is sent to dead-letter handling. |
 
+## Transaction Event Idempotency
+
+The transaction service stores the originating payment id with every new ledger
+entry. An exact Kafka redelivery returns the existing entry without writing a
+second row. Reusing the same payment id with different account or amount data
+fails as a conflict. A database unique constraint protects concurrent consumers;
+the losing writer re-reads and accepts only the matching entry. Kafka retry and
+dead-letter policy remain separate planned work. Payment creation and event
+consumption share a two-decimal amount contract so an accepted payment cannot
+later fail ledger validation because of database rounding.
+
 ## Failure States
 
 | State | Meaning | Operator action |
@@ -61,6 +72,6 @@ sequenceDiagram
 
 - Add an `Idempotency-Key` header requirement to payment creation.
 - Persist idempotency key, payment id, request hash, and final result.
-- Add duplicate event detection in the transaction service.
+- [x] Add duplicate event detection in the transaction service.
 - Add tests for repeated payment requests with the same key.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.
