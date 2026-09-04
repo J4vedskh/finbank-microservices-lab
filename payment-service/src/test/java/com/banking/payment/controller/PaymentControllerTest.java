@@ -2,6 +2,7 @@ package com.banking.payment.controller;
 
 import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
+import com.banking.payment.service.PaymentIdempotencyConflictException;
 import com.banking.payment.service.PaymentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -18,6 +19,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -42,6 +45,7 @@ class PaymentControllerTest {
         mockMvc.perform(get("/payments"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(42))
+                .andExpect(jsonPath("$[0].idempotencyKeyHash").doesNotExist())
                 .andExpect(jsonPath("$[0].status").value("CREATED"));
 
         verify(paymentService).findAll();
@@ -49,9 +53,11 @@ class PaymentControllerTest {
 
     @Test
     void createPayment_validRequest_delegatesValidatedInputToService() throws Exception {
-        when(paymentService.create(any(CreatePaymentRequest.class))).thenReturn(savedPayment());
+        when(paymentService.create(anyString(), any(CreatePaymentRequest.class)))
+                .thenReturn(savedPayment());
 
         mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "pay-key-42")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -65,14 +71,60 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.fromAccount").value(1))
                 .andExpect(jsonPath("$.toAccount").value(2))
                 .andExpect(jsonPath("$.amount").value(750.00))
+                .andExpect(jsonPath("$.idempotencyKeyHash").doesNotExist())
                 .andExpect(jsonPath("$.status").value("CREATED"));
 
         ArgumentCaptor<CreatePaymentRequest> requestCaptor =
                 ArgumentCaptor.forClass(CreatePaymentRequest.class);
-        verify(paymentService).create(requestCaptor.capture());
+        verify(paymentService).create(eq("pay-key-42"), requestCaptor.capture());
         assertThat(requestCaptor.getValue().fromAccount()).isEqualTo(1L);
         assertThat(requestCaptor.getValue().toAccount()).isEqualTo(2L);
         assertThat(requestCaptor.getValue().amount()).isEqualByComparingTo("750.00");
+    }
+
+    @Test
+    void createPayment_missingIdempotencyKey_returnsBadRequestWithoutSideEffects() throws Exception {
+        mockMvc.perform(post("/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPaymentRequest()))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "contains space", "clé"})
+    void createPayment_invalidIdempotencyKey_returnsBadRequestWithoutSideEffects(String key) throws Exception {
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPaymentRequest()))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    void createPayment_oversizedIdempotencyKey_returnsBadRequestWithoutSideEffects() throws Exception {
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "a".repeat(129))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPaymentRequest()))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    void createPayment_conflictingIdempotencyKey_returnsConflict() throws Exception {
+        when(paymentService.create(eq("pay-key-42"), any(CreatePaymentRequest.class)))
+                .thenThrow(new PaymentIdempotencyConflictException());
+
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "pay-key-42")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPaymentRequest()))
+                .andExpect(status().isConflict());
     }
 
     @ParameterizedTest
@@ -132,9 +184,11 @@ class PaymentControllerTest {
 
     @Test
     void createPayment_clientCannotOverrideServerOwnedIdOrStatus() throws Exception {
-        when(paymentService.create(any(CreatePaymentRequest.class))).thenReturn(savedPayment());
+        when(paymentService.create(anyString(), any(CreatePaymentRequest.class)))
+                .thenReturn(savedPayment());
 
         mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "pay-key-42")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -151,7 +205,7 @@ class PaymentControllerTest {
 
         ArgumentCaptor<CreatePaymentRequest> requestCaptor =
                 ArgumentCaptor.forClass(CreatePaymentRequest.class);
-        verify(paymentService).create(requestCaptor.capture());
+        verify(paymentService).create(eq("pay-key-42"), requestCaptor.capture());
         assertThat(requestCaptor.getValue().fromAccount()).isEqualTo(1L);
         assertThat(requestCaptor.getValue().toAccount()).isEqualTo(2L);
         assertThat(requestCaptor.getValue().amount()).isEqualByComparingTo("750.00");
@@ -159,6 +213,7 @@ class PaymentControllerTest {
 
     private void assertBadRequestWithoutSideEffects(String request) throws Exception {
         mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "pay-key-42")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest());
@@ -166,9 +221,14 @@ class PaymentControllerTest {
         verifyNoInteractions(paymentService);
     }
 
+    private String validPaymentRequest() {
+        return "{\"fromAccount\":1,\"toAccount\":2,\"amount\":750.00}";
+    }
+
     private Payment savedPayment() {
         Payment payment = new Payment();
         payment.setId(42L);
+        payment.setIdempotencyKeyHash("a".repeat(64));
         payment.setFromAccount(1L);
         payment.setToAccount(2L);
         payment.setAmount(new BigDecimal("750.00"));

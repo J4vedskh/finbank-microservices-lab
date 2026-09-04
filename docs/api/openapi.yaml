@@ -62,6 +62,16 @@ paths:
     post:
       tags: [Payments]
       summary: Create a payment and publish a payment event
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Opaque case-sensitive key for safely replaying this request.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[!-~]+$'
       requestBody:
         required: true
         content:
@@ -75,6 +85,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Payment"
+        "400":
+          description: Idempotency key or payment request failed validation
+        "409":
+          description: Idempotency key was already used for a different payment
   /transactions:
     get:
       tags: [Transactions]

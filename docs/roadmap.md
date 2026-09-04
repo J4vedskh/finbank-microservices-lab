@@ -29,10 +29,11 @@ gantt
 | 2 | Completed: add service-layer boundaries for account, payment, and transaction flows |
 | 3 | Completed: add H2 persistence coverage for account, payment, and transaction data |
 | 4 | Completed: persist payment event identity and prevent duplicate ledger entries |
-| 5 | Add idempotency-key handling for payment creation |
-| 6 | Add OpenAPI YAML and Swagger UI documentation |
-| 7 | Add health probes and resource limits to Kubernetes manifests |
-| 8 | Add Prometheus dashboard documentation and screenshots |
+| 5 | Completed: add hashed idempotency-key handling for payment creation |
+| 6 | Add a transactional outbox for recoverable payment event publication |
+| 7 | Add OpenAPI YAML and Swagger UI documentation |
+| 8 | Add health probes and resource limits to Kubernetes manifests |
+| 9 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

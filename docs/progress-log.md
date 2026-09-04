@@ -33,16 +33,17 @@ flowchart TD
 | 2026-09-01 | Transaction persistence | Added H2-backed JPA coverage proving generated transaction identity, timestamps, persisted fields, and source/destination account-history queries without Docker. | `mvn -T 1C clean test` |
 | 2026-09-02 | Transaction architecture | Moved HTTP reads and payment-event ledger writes behind a tested service boundary, separated the Kafka listener, and made malformed events fail visibly instead of being silently discarded. | `mvn -T 1C clean test` |
 | 2026-09-03 | Transaction idempotency | Persisted payment event identity, made exact redelivery idempotent, rejected conflicting reuse, added a database uniqueness guard, and aligned producer/consumer amount precision. | `mvn -T 1C clean test` |
+| 2026-09-04 | Payment idempotency | Required an idempotency key, stored only its hash, returned exact retries without duplicate writes or event sends, rejected conflicting reuse, and guarded concurrent requests with database uniqueness. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add idempotency-key handling for payment creation. |
+| Backend | Add a transactional outbox for recoverable payment event publication. |
 | Quality | Define Kafka retry/dead-letter policy and test transient persistence failures. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
-| Resilience | Add idempotency-key handling and duplicate payment request tests. |
+| Resilience | Define event publication recovery states and retry policy. |
 
 ## Review Standard
 
