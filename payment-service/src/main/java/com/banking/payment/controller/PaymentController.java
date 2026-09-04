@@ -4,6 +4,9 @@ import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.service.PaymentService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,7 +26,14 @@ public class PaymentController {
     }
 
     @PostMapping
-    public Payment create(@Valid @RequestBody CreatePaymentRequest request) {
-        return paymentService.create(request);
+    public Payment create(
+            @RequestHeader("Idempotency-Key")
+            @NotBlank
+            @Size(max = 128)
+            @Pattern(regexp = "^[!-~]+$")
+            String idempotencyKey,
+            @Valid @RequestBody CreatePaymentRequest request
+    ) {
+        return paymentService.create(idempotencyKey, request);
     }
 }
