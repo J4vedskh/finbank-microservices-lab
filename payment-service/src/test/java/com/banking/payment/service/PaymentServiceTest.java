@@ -14,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.kafka.core.KafkaTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -23,11 +22,9 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -38,57 +35,46 @@ class PaymentServiceTest {
     private PaymentRepository paymentRepository;
 
     @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private PaymentCreationTransaction paymentCreationTransaction;
 
     @InjectMocks
     private PaymentService paymentService;
 
     @Test
-    void create_savesCreatedPaymentBeforeRequestingEventPublication() {
-        CreatePaymentRequest request = new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"));
-        when(paymentRepository.findByIdempotencyKeyHash(anyString())).thenReturn(Optional.empty());
-        when(paymentRepository.saveAndFlush(any(Payment.class))).thenAnswer(invocation -> {
-            Payment payment = invocation.getArgument(0);
-            payment.setId(42L);
-            return payment;
-        });
+    void create_newRequest_delegatesHashedKeyToAtomicCreation() {
+        CreatePaymentRequest request = request(1L, 2L, "750.00");
+        Payment created = payment(42L, 1L, 2L, "750.00");
+        when(paymentRepository.findByIdempotencyKeyHash(anyString()))
+                .thenReturn(Optional.empty());
+        when(paymentCreationTransaction.create(anyString(), eq(request)))
+                .thenReturn(created);
 
         Payment result = paymentService.create("pay-key-42", request);
 
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
-        InOrder persistenceThenEnqueue = inOrder(paymentRepository, kafkaTemplate);
-        persistenceThenEnqueue.verify(paymentRepository)
+        InOrder lookupThenCreate = inOrder(paymentRepository, paymentCreationTransaction);
+        lookupThenCreate.verify(paymentRepository)
                 .findByIdempotencyKeyHash(hashCaptor.capture());
-        persistenceThenEnqueue.verify(paymentRepository).saveAndFlush(paymentCaptor.capture());
-        persistenceThenEnqueue.verify(kafkaTemplate).send("payments", "42|1|2|750.00");
-
+        lookupThenCreate.verify(paymentCreationTransaction)
+                .create(hashCaptor.getValue(), request);
         assertThat(hashCaptor.getValue()).matches("[0-9a-f]{64}");
         assertThat(hashCaptor.getValue()).isNotEqualTo("pay-key-42");
-        Payment persisted = paymentCaptor.getValue();
-        assertThat(persisted.getId()).isEqualTo(42L);
-        assertThat(persisted.getIdempotencyKeyHash()).isEqualTo(hashCaptor.getValue());
-        assertThat(persisted.getFromAccount()).isEqualTo(1L);
-        assertThat(persisted.getToAccount()).isEqualTo(2L);
-        assertThat(persisted.getAmount()).isEqualByComparingTo("750.00");
-        assertThat(persisted.getStatus()).isEqualTo("CREATED");
-        assertThat(result).isSameAs(persisted);
+        assertThat(result).isSameAs(created);
     }
 
     @Test
-    void create_exactReplay_returnsExistingPaymentWithoutPublishingAgain() {
+    void create_exactReplay_returnsExistingPaymentWithoutAnotherOutboxWrite() {
         Payment existing = payment(42L, 1L, 2L, "750.0");
         when(paymentRepository.findByIdempotencyKeyHash(anyString()))
                 .thenReturn(Optional.of(existing));
 
         Payment result = paymentService.create(
                 "pay-key-42",
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"))
+                request(1L, 2L, "750.00")
         );
 
         assertThat(result).isSameAs(existing);
-        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
-        verifyNoInteractions(kafkaTemplate);
+        verifyNoInteractions(paymentCreationTransaction);
     }
 
     @ParameterizedTest
@@ -102,72 +88,62 @@ class PaymentServiceTest {
                 .isInstanceOf(PaymentIdempotencyConflictException.class)
                 .hasMessage("Idempotency key is already associated with a different payment");
 
-        verify(paymentRepository, never()).saveAndFlush(any(Payment.class));
-        verifyNoInteractions(kafkaTemplate);
+        verifyNoInteractions(paymentCreationTransaction);
     }
 
     @Test
-    void create_identicalConcurrentInsert_returnsWinningPaymentWithoutPublishing() {
+    void create_identicalConcurrentInsert_returnsWinningPayment() {
+        CreatePaymentRequest request = request(1L, 2L, "750.00");
         Payment existing = payment(42L, 1L, 2L, "750.0");
         DataIntegrityViolationException race =
                 new DataIntegrityViolationException("duplicate idempotency key hash");
         when(paymentRepository.findByIdempotencyKeyHash(anyString()))
                 .thenReturn(Optional.empty(), Optional.of(existing));
-        when(paymentRepository.saveAndFlush(any(Payment.class))).thenThrow(race);
+        when(paymentCreationTransaction.create(anyString(), eq(request))).thenThrow(race);
 
-        Payment result = paymentService.create(
-                "pay-key-42",
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"))
-        );
+        Payment result = paymentService.create("pay-key-42", request);
 
         assertThat(result).isSameAs(existing);
-        verifyNoInteractions(kafkaTemplate);
     }
 
     @Test
-    void create_conflictingConcurrentInsert_throwsConflictWithoutPublishing() {
+    void create_conflictingConcurrentInsert_throwsConflict() {
+        CreatePaymentRequest request = request(1L, 2L, "750.00");
         Payment existing = payment(42L, 1L, 3L, "750.00");
         DataIntegrityViolationException race =
                 new DataIntegrityViolationException("duplicate idempotency key hash");
         when(paymentRepository.findByIdempotencyKeyHash(anyString()))
                 .thenReturn(Optional.empty(), Optional.of(existing));
-        when(paymentRepository.saveAndFlush(any(Payment.class))).thenThrow(race);
+        when(paymentCreationTransaction.create(anyString(), eq(request))).thenThrow(race);
 
-        assertThatThrownBy(() -> paymentService.create(
-                "pay-key-42",
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"))
-        )).isInstanceOf(PaymentIdempotencyConflictException.class);
-
-        verifyNoInteractions(kafkaTemplate);
+        assertThatThrownBy(() -> paymentService.create("pay-key-42", request))
+                .isInstanceOf(PaymentIdempotencyConflictException.class);
     }
 
     @Test
     void create_constraintFailureWithoutMatchingKey_propagatesOriginalFailure() {
+        CreatePaymentRequest request = request(1L, 2L, "750.00");
         DataIntegrityViolationException failure =
                 new DataIntegrityViolationException("unrelated constraint failure");
-        when(paymentRepository.findByIdempotencyKeyHash(anyString())).thenReturn(Optional.empty());
-        when(paymentRepository.saveAndFlush(any(Payment.class))).thenThrow(failure);
+        when(paymentRepository.findByIdempotencyKeyHash(anyString()))
+                .thenReturn(Optional.empty());
+        when(paymentCreationTransaction.create(anyString(), eq(request))).thenThrow(failure);
 
-        assertThatThrownBy(() -> paymentService.create(
-                "pay-key-42",
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"))
-        )).isSameAs(failure);
-
-        verifyNoInteractions(kafkaTemplate);
+        assertThatThrownBy(() -> paymentService.create("pay-key-42", request))
+                .isSameAs(failure);
     }
 
     @Test
-    void create_doesNotPublishWhenPersistenceFails() {
-        CreatePaymentRequest request = new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"));
-        when(paymentRepository.findByIdempotencyKeyHash(anyString())).thenReturn(Optional.empty());
-        when(paymentRepository.saveAndFlush(any(Payment.class)))
+    void create_creationFailure_propagatesUnchanged() {
+        CreatePaymentRequest request = request(1L, 2L, "750.00");
+        when(paymentRepository.findByIdempotencyKeyHash(anyString()))
+                .thenReturn(Optional.empty());
+        when(paymentCreationTransaction.create(anyString(), eq(request)))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         assertThatThrownBy(() -> paymentService.create("pay-key-42", request))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database unavailable");
-
-        verifyNoInteractions(kafkaTemplate);
     }
 
     @Test
@@ -183,10 +159,14 @@ class PaymentServiceTest {
 
     private static Stream<Arguments> conflictingRequests() {
         return Stream.of(
-                Arguments.of(new CreatePaymentRequest(3L, 2L, new BigDecimal("750.00"))),
-                Arguments.of(new CreatePaymentRequest(1L, 3L, new BigDecimal("750.00"))),
-                Arguments.of(new CreatePaymentRequest(1L, 2L, new BigDecimal("751.00")))
+                Arguments.of(request(3L, 2L, "750.00")),
+                Arguments.of(request(1L, 3L, "750.00")),
+                Arguments.of(request(1L, 2L, "751.00"))
         );
+    }
+
+    private static CreatePaymentRequest request(Long from, Long to, String amount) {
+        return new CreatePaymentRequest(from, to, new BigDecimal(amount));
     }
 
     private Payment payment(Long id, Long fromAccount, Long toAccount, String amount) {

@@ -19,25 +19,37 @@ sequenceDiagram
     participant API as Payment Controller
     participant Payments as Payment Service
     participant DB as Payment DB
+    participant Relay as Outbox Relay
     participant Kafka as Kafka payments topic
     participant Ledger as Transaction Service
     participant LedgerDB as Transaction DB
 
     Client->>API: POST /payments
     API->>Payments: Validated CreatePaymentRequest
-    Payments->>DB: Save payment as CREATED
-    Payments->>Kafka: Request asynchronous event publication
+    Payments->>DB: Atomically save payment + PENDING outbox event
     Payments-->>API: Return payment id and status
     API-->>Client: HTTP 200 payment response
+    loop Scheduled bounded batch
+        Relay->>DB: Lock next due outbox event
+        Relay->>Kafka: Publish stored key and payload
+        Kafka-->>Relay: Broker acknowledgement
+        Relay->>DB: Mark event and payment PUBLISHED
+    end
     Kafka-->>Ledger: Deliver payment event
     Ledger->>LedgerDB: Save transaction as COMPLETED
 ```
 
-`KafkaTemplate.send` is asynchronous in this increment. The service boundary
-guarantees that the send request happens after persistence, but it does not yet
-guarantee broker acknowledgement or recovery from a later delivery failure.
-Delivery state, retry, and outbox policy remain tracked in the
-[resilience guide](resilience.md).
+Payment and outbox insertion share one database transaction, so a committed new
+payment always has a durable event to relay. The relay waits a bounded time for
+broker acknowledgement and records either `PUBLISHED` or retry metadata. It
+holds a pessimistic database lock while publishing so service instances do not
+relay the same due row concurrently.
+
+Delivery is at least once: a crash after Kafka acknowledgement but before the
+database commit can cause a repeat publication. The transaction service's
+payment-id uniqueness makes that repeat safe. Exponential backoff, terminal
+failure handling, dead-letter routing, and outbox retention remain tracked in
+the [resilience guide](resilience.md).
 
 ## Deployment Topology
 

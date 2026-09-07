@@ -8,15 +8,21 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "*"
   kafka:
     bootstrap-servers: kafka:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+payment:
+  outbox:
+    poll-delay-ms: 1000
+    retry-delay-ms: 5000
+    send-timeout-ms: 5000
+    batch-size: 20
 server:
   port: 8082

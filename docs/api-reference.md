@@ -34,7 +34,7 @@ Base URL: `http://localhost:8082`
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/payments` | List payments |
-| `POST` | `/payments` | Create a payment with a required `Idempotency-Key` header and publish a Kafka event |
+| `POST` | `/payments` | Create a payment with a required `Idempotency-Key` header and durably queue its Kafka event |
 
 `Idempotency-Key` accepts 1–128 visible ASCII characters. Repeating the same
 key and request returns the original payment; reusing the key for different

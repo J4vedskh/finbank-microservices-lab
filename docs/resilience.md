@@ -21,6 +21,7 @@ sequenceDiagram
     participant Client
     participant Payments as Payment Service
     participant Store as Payment DB
+    participant Relay as Outbox Relay
     participant Kafka as Kafka
     participant Ledger as Transaction Service
 
@@ -30,25 +31,25 @@ sequenceDiagram
         Store-->>Payments: Existing payment result
         Payments-->>Client: Return original result
     else New key
-        Payments->>Store: Create payment as CREATED
-        Payments->>Kafka: Publish payment-created event
+        Payments->>Store: Atomically create payment + PENDING outbox event
         Payments-->>Client: Return new payment id
+        Relay->>Store: Lock due outbox event
+        Relay->>Kafka: Publish stored payment event
+        Kafka-->>Relay: Broker acknowledgement
+        Relay->>Store: Mark event and payment PUBLISHED
         Kafka-->>Ledger: Deliver event
         Ledger->>Ledger: Ignore duplicate event ids
     end
 ```
 
-## Planned Retry Boundaries
+## Retry Boundaries
 
-The following policies are design targets. They are not runtime guarantees until
-the matching retry, recovery-state, and dead-letter work is implemented.
-
-| Boundary | Planned policy | Completion signal |
+| Boundary | Current behavior | Remaining work |
 | --- | --- | --- |
-| Client to Payment Service | Client may retry with the same idempotency key. | Original result is returned or request expires. |
-| Payment Service to database | Service retries short transient connection failures. | Database confirms write or returns non-retryable error. |
-| Payment Service to Kafka | Service retries publish failures before marking payment pending. | Event is acknowledged or payment enters recovery state. |
-| Transaction Service consumer | Consumer retries event processing with backoff. | Ledger write succeeds or event is sent to dead-letter handling. |
+| Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
+| Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement and retries failures after a fixed delay. | Add exponential backoff, maximum attempts, and terminal failure handling. |
+| Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
 
@@ -72,11 +73,18 @@ second insert or Kafka send request. Reusing a key for different account or
 amount data returns HTTP `409 Conflict`; a database unique constraint also
 protects concurrent requests.
 
-The first successful database insert still requests Kafka publication
-asynchronously. A process failure between those operations can leave a payment
-without a published event, and an exact retry deliberately does not publish it
-again. A transactional outbox is the next resilience increment for closing that
-recovery gap.
+New payment creation atomically commits the payment and one `PENDING` outbox
+event. A scheduled relay publishes the stored event key and payload, waits for a
+bounded broker acknowledgement, and records `PUBLISHED` or `PENDING_RETRY` state.
+This removes the database-success/process-crash gap that existed when the
+service sent directly after committing the payment.
+
+Publication remains at least once. A timeout, or a crash after broker
+acknowledgement but before the outbox status commit, can cause a duplicate send.
+The transaction service's payment-id uniqueness accepts identical redelivery
+without a second ledger row. The current relay uses a fixed delay and retains
+all outbox rows; maximum attempts, terminal failure, dead-letter routing, and
+retention remain future work.
 
 ## Failure States
 
@@ -94,5 +102,6 @@ recovery gap.
 - [x] Persist a non-raw key digest with the payment result and enforce uniqueness.
 - [x] Add duplicate event detection in the transaction service.
 - [x] Add tests for repeated payment requests with the same key.
-- Add a transactional outbox for recoverable payment event publication.
+- [x] Add a transactional outbox for recoverable payment event publication.
+- Add bounded exponential retry, terminal failure, and dead-letter routing.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.
