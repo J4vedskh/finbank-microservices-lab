@@ -14,8 +14,8 @@ deployable units.
 <div class="hero-card" markdown>
 **Event-driven flow**
 
-Payment creation publishes Kafka events that are consumed by the transaction
-service.
+Payment creation atomically stores a durable outbox event. A scheduled relay
+publishes it to Kafka for the transaction service.
 </div>
 <div class="hero-card" markdown>
 **Platform ready**

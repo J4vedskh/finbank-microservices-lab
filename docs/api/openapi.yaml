@@ -61,7 +61,7 @@ paths:
                   $ref: "#/components/schemas/Payment"
     post:
       tags: [Payments]
-      summary: Create a payment and publish a payment event
+      summary: Create a payment and queue its event for publication
       parameters:
         - name: Idempotency-Key
           in: header
@@ -80,7 +80,7 @@ paths:
               $ref: "#/components/schemas/CreatePaymentRequest"
       responses:
         "200":
-          description: Payment created
+          description: Payment created with durable event publication queued
           content:
             application/json:
               schema:

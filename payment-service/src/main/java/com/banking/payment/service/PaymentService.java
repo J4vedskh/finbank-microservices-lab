@@ -4,7 +4,6 @@ import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.repository.PaymentRepository;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -16,17 +15,15 @@ import java.util.Objects;
 
 @Service
 public class PaymentService {
-    private static final String PAYMENT_TOPIC = "payments";
-
     private final PaymentRepository paymentRepository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final PaymentCreationTransaction paymentCreationTransaction;
 
     public PaymentService(
             PaymentRepository paymentRepository,
-            KafkaTemplate<String, String> kafkaTemplate
+            PaymentCreationTransaction paymentCreationTransaction
     ) {
         this.paymentRepository = paymentRepository;
-        this.kafkaTemplate = kafkaTemplate;
+        this.paymentCreationTransaction = paymentCreationTransaction;
     }
 
     public List<Payment> findAll() {
@@ -38,32 +35,20 @@ public class PaymentService {
 
         return paymentRepository.findByIdempotencyKeyHash(idempotencyKeyHash)
                 .map(existing -> acceptReplay(existing, request))
-                .orElseGet(() -> persistAndPublish(idempotencyKeyHash, request));
+                .orElseGet(() -> createAtomically(idempotencyKeyHash, request));
     }
 
-    private Payment persistAndPublish(
+    private Payment createAtomically(
             String idempotencyKeyHash,
             CreatePaymentRequest request
     ) {
-        Payment payment = new Payment();
-        payment.setIdempotencyKeyHash(idempotencyKeyHash);
-        payment.setFromAccount(request.fromAccount());
-        payment.setToAccount(request.toAccount());
-        payment.setAmount(request.amount());
-        payment.setStatus("CREATED");
-
-        Payment saved;
         try {
-            saved = paymentRepository.saveAndFlush(payment);
+            return paymentCreationTransaction.create(idempotencyKeyHash, request);
         } catch (DataIntegrityViolationException exception) {
             return paymentRepository.findByIdempotencyKeyHash(idempotencyKeyHash)
                     .map(existing -> acceptReplay(existing, request))
                     .orElseThrow(() -> exception);
         }
-
-        // KafkaTemplate sends asynchronously; delivery recovery is a separate resilience increment.
-        kafkaTemplate.send(PAYMENT_TOPIC, toPaymentEvent(saved));
-        return saved;
     }
 
     private Payment acceptReplay(Payment existing, CreatePaymentRequest request) {
@@ -91,10 +76,4 @@ public class PaymentService {
         }
     }
 
-    private String toPaymentEvent(Payment payment) {
-        return payment.getId()
-                + "|" + payment.getFromAccount()
-                + "|" + payment.getToAccount()
-                + "|" + payment.getAmount();
-    }
 }

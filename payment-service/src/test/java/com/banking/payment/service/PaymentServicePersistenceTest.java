@@ -2,26 +2,26 @@ package com.banking.payment.service;
 
 import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
+import com.banking.payment.entity.PaymentOutboxEvent;
+import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.repository.PaymentOutboxRepository;
 import com.banking.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.kafka.core.KafkaTemplate;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 @DataJpaTest
-@Import(PaymentService.class)
+@Import({PaymentService.class, PaymentCreationTransaction.class})
 class PaymentServicePersistenceTest {
 
     @Autowired
@@ -31,16 +31,16 @@ class PaymentServicePersistenceTest {
     private PaymentRepository paymentRepository;
 
     @Autowired
+    private PaymentOutboxRepository paymentOutboxRepository;
+
+    @Autowired
     private TestEntityManager entityManager;
 
-    @MockBean
-    private KafkaTemplate<String, String> kafkaTemplate;
-
     @Test
-    void create_persistsGeneratedIdentityAndUsesItInTheEventRequest() {
+    void create_commitsPaymentAndPendingOutboxEventTogether() {
         Payment created = paymentService.create(
                 "pay-key-42",
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"))
+                request()
         );
 
         assertThat(created.getId()).isNotNull();
@@ -48,41 +48,35 @@ class PaymentServicePersistenceTest {
         entityManager.flush();
         entityManager.clear();
 
-        List<Payment> payments = paymentService.findAll();
+        List<PaymentOutboxEvent> outboxEvents = paymentOutboxRepository.findAll();
 
         assertThat(paymentRepository.count()).isEqualTo(1);
-        assertThat(payments).singleElement().satisfies(payment -> {
-            assertThat(payment.getId()).isEqualTo(created.getId());
-            assertThat(payment.getIdempotencyKeyHash())
-                    .isEqualTo(created.getIdempotencyKeyHash());
-            assertThat(payment.getFromAccount()).isEqualTo(1L);
-            assertThat(payment.getToAccount()).isEqualTo(2L);
-            assertThat(payment.getAmount()).isEqualByComparingTo("750.00");
-            assertThat(payment.getStatus()).isEqualTo("CREATED");
+        assertThat(outboxEvents).singleElement().satisfies(event -> {
+            assertThat(event.getPayment().getId()).isEqualTo(created.getId());
+            assertThat(event.getTopic()).isEqualTo("payments");
+            assertThat(event.getEventKey()).isEqualTo(created.getId().toString());
+            assertThat(event.getPayload())
+                    .isEqualTo(created.getId() + "|1|2|750.00");
+            assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+            assertThat(event.getAttemptCount()).isZero();
+            assertThat(event.getCreatedAt()).isNotNull();
+            assertThat(event.getNextAttemptAt()).isEqualTo(event.getCreatedAt());
+            assertThat(event.getPublishedAt()).isNull();
+            assertThat(event.getLastError()).isNull();
         });
-        verify(kafkaTemplate).send(
-                "payments",
-                created.getId() + "|1|2|750.00"
-        );
     }
 
     @Test
-    void create_exactReplayKeepsOnePaymentAndOneEventRequest() {
-        CreatePaymentRequest request =
-                new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"));
-
-        Payment first = paymentService.create("pay-key-42", request);
+    void create_exactReplayKeepsOnePaymentAndOneOutboxEvent() {
+        Payment first = paymentService.create("pay-key-42", request());
         entityManager.flush();
         entityManager.clear();
 
-        Payment replay = paymentService.create("pay-key-42", request);
+        Payment replay = paymentService.create("pay-key-42", request());
 
         assertThat(replay.getId()).isEqualTo(first.getId());
         assertThat(paymentRepository.count()).isEqualTo(1);
-        verify(kafkaTemplate, times(1)).send(
-                "payments",
-                first.getId() + "|1|2|750.00"
-        );
+        assertThat(paymentOutboxRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -91,6 +85,19 @@ class PaymentServicePersistenceTest {
 
         assertThatThrownBy(() ->
                 paymentRepository.saveAndFlush(payment("a".repeat(64), 3L, 4L))
+        ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void save_secondOutboxEventForPayment_isRejectedByDatabase() {
+        Payment payment = paymentRepository.saveAndFlush(
+                payment("a".repeat(64), 1L, 2L)
+        );
+        Instant createdAt = Instant.now();
+        paymentOutboxRepository.saveAndFlush(outboxEvent(payment, createdAt));
+
+        assertThatThrownBy(() ->
+                paymentOutboxRepository.saveAndFlush(outboxEvent(payment, createdAt.plusSeconds(1)))
         ).isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -105,6 +112,10 @@ class PaymentServicePersistenceTest {
                 );
     }
 
+    private CreatePaymentRequest request() {
+        return new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"));
+    }
+
     private Payment payment(String idempotencyKeyHash, Long fromAccount, Long toAccount) {
         Payment payment = new Payment();
         payment.setIdempotencyKeyHash(idempotencyKeyHash);
@@ -113,5 +124,15 @@ class PaymentServicePersistenceTest {
         payment.setAmount(new BigDecimal("750.00"));
         payment.setStatus("CREATED");
         return payment;
+    }
+
+    private PaymentOutboxEvent outboxEvent(Payment payment, Instant createdAt) {
+        return new PaymentOutboxEvent(
+                payment,
+                "payments",
+                payment.getId().toString(),
+                payment.getId() + "|1|2|750.00",
+                createdAt
+        );
     }
 }
