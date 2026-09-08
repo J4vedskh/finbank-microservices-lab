@@ -172,6 +172,7 @@ components:
           format: decimal
         status:
           type: string
+          enum: [CREATED, PENDING_RETRY, PUBLISHED, PUBLISH_EXHAUSTED]
           example: CREATED
     CreatePaymentRequest:
       type: object

@@ -32,8 +32,12 @@ sequenceDiagram
     loop Scheduled bounded batch
         Relay->>DB: Lock next due outbox event
         Relay->>Kafka: Publish stored key and payload
-        Kafka-->>Relay: Broker acknowledgement
-        Relay->>DB: Mark event and payment PUBLISHED
+        alt Broker acknowledgement
+            Kafka-->>Relay: Acknowledged
+            Relay->>DB: Mark event and payment PUBLISHED
+        else Publish failure or timeout
+            Relay->>DB: Schedule retry or mark publication exhausted
+        end
     end
     Kafka-->>Ledger: Deliver payment event
     Ledger->>LedgerDB: Save transaction as COMPLETED
@@ -47,9 +51,9 @@ relay the same due row concurrently.
 
 Delivery is at least once: a crash after Kafka acknowledgement but before the
 database commit can cause a repeat publication. The transaction service's
-payment-id uniqueness makes that repeat safe. Exponential backoff, terminal
-failure handling, dead-letter routing, and outbox retention remain tracked in
-the [resilience guide](resilience.md).
+payment-id uniqueness makes that repeat safe. Bounded exponential retry and
+terminal relay exhaustion are implemented; dead-letter routing, manual requeue, and
+outbox retention remain tracked in the [resilience guide](resilience.md).
 
 ## Deployment Topology
 

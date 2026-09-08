@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface PaymentOutboxRepository extends JpaRepository<PaymentOutboxEvent, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PaymentOutboxEvent>
-    findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+    findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
             PaymentOutboxStatus status,
             Instant now
     );

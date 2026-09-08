@@ -31,10 +31,11 @@ gantt
 | 4 | Completed: persist payment event identity and prevent duplicate ledger entries |
 | 5 | Completed: add hashed idempotency-key handling for payment creation |
 | 6 | Completed: add a transactional outbox with acknowledged Kafka relay |
-| 7 | Add bounded outbox backoff, terminal failure, and dead-letter handling |
-| 8 | Add OpenAPI YAML and Swagger UI documentation |
-| 9 | Add health probes and resource limits to Kubernetes manifests |
-| 10 | Add Prometheus dashboard documentation and screenshots |
+| 7 | Completed: add capped exponential outbox retry and terminal exhaustion |
+| 8 | Add dead-letter routing and operator-controlled outbox requeue |
+| 9 | Add OpenAPI YAML and Swagger UI documentation |
+| 10 | Add health probes and resource limits to Kubernetes manifests |
+| 11 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

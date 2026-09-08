@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement and retries failures after a fixed delay. | Add exponential backoff, maximum attempts, and terminal failure handling. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, and stops after five failed sends by default. | Add dead-letter routing and operator-controlled requeue. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -82,9 +82,30 @@ service sent directly after committing the payment.
 Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
-without a second ledger row. The current relay uses a fixed delay and retains
-all outbox rows; maximum attempts, terminal failure, dead-letter routing, and
-retention remain future work.
+without a second ledger row. The relay retains all outbox rows; dead-letter
+routing, operator-controlled requeue, and retention remain future work.
+
+## Bounded Outbox Retry
+
+The default policy makes five total broker send attempts. After failed attempt
+`n`, the next delay is `min(5 seconds × 2^(n-1), 5 minutes)`. Delay timing starts
+when the failure is observed, so time spent waiting for the broker does not make
+the next attempt immediately due. Both the base delay, cap, and maximum attempts
+are configurable.
+
+| Property | Default | Purpose |
+| --- | ---: | --- |
+| `payment.outbox.retry-delay-ms` | 5000 | First retry delay |
+| `payment.outbox.max-retry-delay-ms` | 300000 | Exponential delay cap |
+| `payment.outbox.max-attempts` | 5 | Total send attempts, including the initial attempt |
+| `payment.outbox.send-timeout-ms` | 5000 | Maximum acknowledgement wait per attempt |
+
+When the final attempt fails, the outbox row receives an exhaustion timestamp,
+the payment moves to `PUBLISH_EXHAUSTED`, and the row is excluded from normal
+polling. This means the relay exhausted its policy; it does not prove Kafka never
+accepted the event because a timeout can be ambiguous. The stored error is only
+the exception type so broker messages do not leak secrets. Manual requeue and
+dead-letter handling are still required.
 
 ## Failure States
 
@@ -94,7 +115,7 @@ retention remain future work.
 | `PUBLISHED` | Payment event was acknowledged by Kafka. | Confirm consumer lag remains low. |
 | `COMPLETED` | Ledger entry was written successfully. | No action required. |
 | `PENDING_RETRY` | A retryable dependency failed. | Review retry queue and dependency health. |
-| `FAILED` | A non-retryable validation or processing error occurred. | Expose a clear client-facing error and audit trail. |
+| `PUBLISH_EXHAUSTED` | The outbox exhausted its publication attempts; delivery may still be unknown. | Inspect Kafka and ledger state before future manual requeue. |
 
 ## Implementation Checklist
 
@@ -103,5 +124,6 @@ retention remain future work.
 - [x] Add duplicate event detection in the transaction service.
 - [x] Add tests for repeated payment requests with the same key.
 - [x] Add a transactional outbox for recoverable payment event publication.
-- Add bounded exponential retry, terminal failure, and dead-letter routing.
+- [x] Add bounded exponential retry and terminal relay exhaustion handling.
+- Add dead-letter routing and operator-controlled requeue.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

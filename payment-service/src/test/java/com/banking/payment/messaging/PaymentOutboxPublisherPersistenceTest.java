@@ -26,7 +26,9 @@ import static org.mockito.Mockito.when;
 @Import(PaymentOutboxPublisher.class)
 @TestPropertySource(properties = {
         "payment.outbox.send-timeout-ms=1000",
-        "payment.outbox.retry-delay-ms=5000"
+        "payment.outbox.retry-delay-ms=5000",
+        "payment.outbox.max-retry-delay-ms=60000",
+        "payment.outbox.max-attempts=3"
 })
 class PaymentOutboxPublisherPersistenceTest {
 
@@ -60,6 +62,7 @@ class PaymentOutboxPublisherPersistenceTest {
                     assertThat(persisted.getStatus()).isEqualTo(PaymentOutboxStatus.PUBLISHED);
                     assertThat(persisted.getAttemptCount()).isEqualTo(1);
                     assertThat(persisted.getPublishedAt()).isNotNull();
+                    assertThat(persisted.getExhaustedAt()).isNull();
                     assertThat(persisted.getLastError()).isNull();
                     assertThat(persisted.getPayment().getStatus()).isEqualTo("PUBLISHED");
                 });
@@ -82,9 +85,38 @@ class PaymentOutboxPublisherPersistenceTest {
                     assertThat(persisted.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
                     assertThat(persisted.getAttemptCount()).isEqualTo(1);
                     assertThat(persisted.getPublishedAt()).isNull();
+                    assertThat(persisted.getExhaustedAt()).isNull();
                     assertThat(persisted.getLastError()).isEqualTo("IllegalStateException");
                     assertThat(persisted.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
                 });
+    }
+
+    @Test
+    void publishNext_maximumAttemptsPersistsTerminalExhaustion() {
+        PaymentOutboxEvent event = persistPendingEvent();
+        event.scheduleRetry(Instant.now().minusSeconds(2), "Failure1");
+        event.scheduleRetry(Instant.now().minusSeconds(1), "Failure2");
+        paymentOutboxRepository.saveAndFlush(event);
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+        when(kafkaTemplate.send(event.getTopic(), event.getEventKey(), event.getPayload()))
+                .thenReturn(failed);
+
+        assertThat(publisher.publishNext()).isTrue();
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(paymentOutboxRepository.findById(event.getId()))
+                .hasValueSatisfying(persisted -> {
+                    assertThat(persisted.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+                    assertThat(persisted.getAttemptCount()).isEqualTo(3);
+                    assertThat(persisted.getPublishedAt()).isNull();
+                    assertThat(persisted.getExhaustedAt()).isNotNull();
+                    assertThat(persisted.getLastError()).isEqualTo("IllegalStateException");
+                    assertThat(persisted.getPayment().getStatus())
+                            .isEqualTo("PUBLISH_EXHAUSTED");
+                });
+        assertThat(publisher.publishNext()).isFalse();
     }
 
     private PaymentOutboxEvent persistPendingEvent() {
