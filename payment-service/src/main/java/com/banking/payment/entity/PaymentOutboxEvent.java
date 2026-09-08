@@ -27,7 +27,7 @@ import java.time.Instant;
         ),
         indexes = @Index(
                 name = "idx_payment_outbox_due",
-                columnList = "status,next_attempt_at,created_at"
+                columnList = "status,exhausted_at,next_attempt_at,created_at"
         )
 )
 public class PaymentOutboxEvent {
@@ -68,6 +68,9 @@ public class PaymentOutboxEvent {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    @Column(name = "exhausted_at")
+    private Instant exhaustedAt;
+
     @Column(name = "last_error", length = 512)
     private String lastError;
 
@@ -98,6 +101,7 @@ public class PaymentOutboxEvent {
         this.status = PaymentOutboxStatus.PUBLISHED;
         this.attemptCount++;
         this.publishedAt = publishedAt;
+        this.exhaustedAt = null;
         this.lastError = null;
     }
 
@@ -106,7 +110,22 @@ public class PaymentOutboxEvent {
         this.attemptCount++;
         this.nextAttemptAt = nextAttemptAt;
         this.publishedAt = null;
+        this.exhaustedAt = null;
         this.lastError = errorType;
+    }
+
+    public void markExhausted(Instant exhaustedAt, String errorType) {
+        this.status = PaymentOutboxStatus.PENDING;
+        this.attemptCount++;
+        this.publishedAt = null;
+        this.exhaustedAt = exhaustedAt;
+        this.lastError = errorType;
+    }
+
+    public void markExhaustedWithoutAttempt(Instant exhaustedAt) {
+        this.status = PaymentOutboxStatus.PENDING;
+        this.publishedAt = null;
+        this.exhaustedAt = exhaustedAt;
     }
 
     public Long getId() {
@@ -147,6 +166,10 @@ public class PaymentOutboxEvent {
 
     public Instant getPublishedAt() {
         return publishedAt;
+    }
+
+    public Instant getExhaustedAt() {
+        return exhaustedAt;
     }
 
     public String getLastError() {

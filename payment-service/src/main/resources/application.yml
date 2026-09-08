@@ -22,6 +22,8 @@ payment:
   outbox:
     poll-delay-ms: 1000
     retry-delay-ms: 5000
+    max-retry-delay-ms: 300000
+    max-attempts: 5
     send-timeout-ms: 5000
     batch-size: 20
 server:

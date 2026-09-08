@@ -6,27 +6,36 @@ import com.banking.payment.entity.PaymentOutboxStatus;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentOutboxPublisherTest {
+    private static final Instant NOW = Instant.parse("2026-09-08T05:30:00Z");
 
     @Mock
     private PaymentOutboxRepository paymentOutboxRepository;
@@ -38,7 +47,7 @@ class PaymentOutboxPublisherTest {
     void publishNext_noDueEvent_returnsFalseWithoutKafkaInteraction() {
         PaymentOutboxPublisher publisher = publisher();
         when(paymentOutboxRepository
-                .findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
                         any(PaymentOutboxStatus.class),
                         any(Instant.class)
                 )).thenReturn(Optional.empty());
@@ -54,7 +63,7 @@ class PaymentOutboxPublisherTest {
         PaymentOutboxEvent event = pendingEvent();
         PaymentOutboxPublisher publisher = publisher();
         when(paymentOutboxRepository
-                .findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
                         eq(PaymentOutboxStatus.PENDING),
                         any(Instant.class)
                 )).thenReturn(Optional.of(event));
@@ -79,7 +88,7 @@ class PaymentOutboxPublisherTest {
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
         failed.completeExceptionally(new IllegalStateException("secret broker detail"));
         when(paymentOutboxRepository
-                .findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
                         eq(PaymentOutboxStatus.PENDING),
                         any(Instant.class)
                 )).thenReturn(Optional.of(event));
@@ -91,11 +100,107 @@ class PaymentOutboxPublisherTest {
         assertThat(processed).isTrue();
         assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         assertThat(event.getAttemptCount()).isEqualTo(1);
-        assertThat(event.getNextAttemptAt()).isAfter(event.getCreatedAt());
+        assertThat(event.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(5));
         assertThat(event.getPublishedAt()).isNull();
         assertThat(event.getLastError()).isEqualTo("IllegalStateException");
         assertThat(event.getLastError()).doesNotContain("secret broker detail");
         assertThat(event.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
+    }
+
+    @Test
+    void publishNext_repeatedFailure_usesExponentialDelay() {
+        PaymentOutboxEvent event = pendingEvent();
+        event.scheduleRetry(NOW.minusSeconds(2), "FirstFailure");
+        event.scheduleRetry(NOW.minusSeconds(1), "SecondFailure");
+        PaymentOutboxPublisher publisher = publisher();
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+        when(paymentOutboxRepository
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                        eq(PaymentOutboxStatus.PENDING),
+                        any(Instant.class)
+                )).thenReturn(Optional.of(event));
+        when(kafkaTemplate.send("payments", "42", "42|1|2|750.00"))
+                .thenReturn(failed);
+
+        publisher.publishNext();
+
+        assertThat(event.getAttemptCount()).isEqualTo(3);
+        assertThat(event.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(20));
+        assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+    }
+
+    @Test
+    void publishNext_exponentialDelay_isCapped() {
+        PaymentOutboxEvent event = pendingEvent();
+        event.scheduleRetry(NOW.minusSeconds(3), "Failure1");
+        event.scheduleRetry(NOW.minusSeconds(2), "Failure2");
+        event.scheduleRetry(NOW.minusSeconds(1), "Failure3");
+        PaymentOutboxPublisher publisher = publisher(5_000, 12_000, 6);
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+        when(paymentOutboxRepository
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                        eq(PaymentOutboxStatus.PENDING),
+                        any(Instant.class)
+                )).thenReturn(Optional.of(event));
+        when(kafkaTemplate.send("payments", "42", "42|1|2|750.00"))
+                .thenReturn(failed);
+
+        publisher.publishNext();
+
+        assertThat(event.getAttemptCount()).isEqualTo(4);
+        assertThat(event.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(12));
+    }
+
+    @Test
+    void publishNext_lastAllowedFailure_marksPublicationExhausted() {
+        PaymentOutboxEvent event = pendingEvent();
+        event.scheduleRetry(NOW.minusSeconds(2), "Failure1");
+        event.scheduleRetry(NOW.minusSeconds(1), "Failure2");
+        PaymentOutboxPublisher publisher = publisher(5_000, 60_000, 3);
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+        when(paymentOutboxRepository
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                        eq(PaymentOutboxStatus.PENDING),
+                        any(Instant.class)
+                )).thenReturn(Optional.of(event), Optional.empty());
+        when(kafkaTemplate.send("payments", "42", "42|1|2|750.00"))
+                .thenReturn(failed);
+
+        assertThat(publisher.publishNext()).isTrue();
+        assertThat(publisher.publishNext()).isFalse();
+
+        assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
+        assertThat(event.getAttemptCount()).isEqualTo(3);
+        assertThat(event.getExhaustedAt()).isEqualTo(NOW);
+        assertThat(event.getPublishedAt()).isNull();
+        assertThat(event.getLastError()).isEqualTo("IllegalStateException");
+        assertThat(event.getPayment().getStatus()).isEqualTo("PUBLISH_EXHAUSTED");
+        verify(kafkaTemplate, times(1)).send("payments", "42", "42|1|2|750.00");
+    }
+
+    @Test
+    void publishNext_alreadyAtConfiguredLimit_exhaustsWithoutAnotherSend() {
+        PaymentOutboxEvent event = pendingEvent();
+        event.scheduleRetry(NOW.minusSeconds(3), "Failure1");
+        event.scheduleRetry(NOW.minusSeconds(2), "Failure2");
+        event.scheduleRetry(NOW.minusSeconds(1), "Failure3");
+        PaymentOutboxPublisher publisher = publisher(5_000, 60_000, 3);
+        when(paymentOutboxRepository
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                        eq(PaymentOutboxStatus.PENDING),
+                        any(Instant.class)
+                )).thenReturn(Optional.of(event));
+
+        assertThat(publisher.publishNext()).isTrue();
+
+        assertThat(event.getAttemptCount()).isEqualTo(3);
+        assertThat(event.getExhaustedAt()).isEqualTo(NOW);
+        assertThat(event.getLastError()).isEqualTo("Failure3");
+        assertThat(event.getPayment().getStatus()).isEqualTo("PUBLISH_EXHAUSTED");
+        verifyNoInteractions(kafkaTemplate);
     }
 
     @Test
@@ -106,7 +211,7 @@ class PaymentOutboxPublisherTest {
         CompletableFuture<SendResult<String, String>> pending =
                 org.mockito.Mockito.mock(CompletableFuture.class);
         when(paymentOutboxRepository
-                .findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
                         eq(PaymentOutboxStatus.PENDING),
                         any(Instant.class)
                 )).thenReturn(Optional.of(event));
@@ -129,7 +234,7 @@ class PaymentOutboxPublisherTest {
         PaymentOutboxEvent event = pendingEvent();
         PaymentOutboxPublisher publisher = publisher();
         when(paymentOutboxRepository
-                .findFirstByStatusAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
+                .findFirstByStatusAndExhaustedAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAscIdAsc(
                         eq(PaymentOutboxStatus.PENDING),
                         any(Instant.class)
                 )).thenReturn(Optional.of(event));
@@ -144,12 +249,42 @@ class PaymentOutboxPublisherTest {
         assertThat(event.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
     }
 
+    @ParameterizedTest
+    @MethodSource("invalidPolicies")
+    void constructor_invalidRetryPolicy_failsFast(
+            long sendTimeoutMs,
+            long retryDelayMs,
+            long maxRetryDelayMs,
+            int maxAttempts
+    ) {
+        assertThatThrownBy(() -> new PaymentOutboxPublisher(
+                paymentOutboxRepository,
+                kafkaTemplate,
+                sendTimeoutMs,
+                retryDelayMs,
+                maxRetryDelayMs,
+                maxAttempts,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private PaymentOutboxPublisher publisher() {
+        return publisher(5_000, 60_000, 5);
+    }
+
+    private PaymentOutboxPublisher publisher(
+            long retryDelayMs,
+            long maxRetryDelayMs,
+            int maxAttempts
+    ) {
         return new PaymentOutboxPublisher(
                 paymentOutboxRepository,
                 kafkaTemplate,
                 1_000,
-                5_000
+                retryDelayMs,
+                maxRetryDelayMs,
+                maxAttempts,
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
@@ -165,7 +300,17 @@ class PaymentOutboxPublisherTest {
                 "payments",
                 "42",
                 "42|1|2|750.00",
-                Instant.now().minusSeconds(1)
+                NOW.minusSeconds(1)
+        );
+    }
+
+    private static Stream<Arguments> invalidPolicies() {
+        return Stream.of(
+                Arguments.of(0L, 5_000L, 60_000L, 5),
+                Arguments.of(1_000L, 0L, 60_000L, 5),
+                Arguments.of(1_000L, 5_000L, 0L, 5),
+                Arguments.of(1_000L, 5_000L, 60_000L, 0),
+                Arguments.of(1_000L, 5_000L, 4_999L, 5)
         );
     }
 }

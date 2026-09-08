@@ -40,6 +40,9 @@ Base URL: `http://localhost:8082`
 key and request returns the original payment; reusing the key for different
 payment details returns HTTP `409 Conflict`.
 
+Payment status progresses through `CREATED`, `PENDING_RETRY`, `PUBLISHED`, or
+terminal `PUBLISH_EXHAUSTED` as the outbox relay attempts Kafka publication.
+
 Example request:
 
 ```json
