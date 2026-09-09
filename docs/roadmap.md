@@ -32,10 +32,12 @@ gantt
 | 5 | Completed: add hashed idempotency-key handling for payment creation |
 | 6 | Completed: add a transactional outbox with acknowledged Kafka relay |
 | 7 | Completed: add capped exponential outbox retry and terminal exhaustion |
-| 8 | Add dead-letter routing and operator-controlled outbox requeue |
-| 9 | Add OpenAPI YAML and Swagger UI documentation |
-| 10 | Add health probes and resource limits to Kubernetes manifests |
-| 11 | Add Prometheus dashboard documentation and screenshots |
+| 8 | Completed: add a locked internal recovery boundary for exhausted events |
+| 9 | Add a secured, audited, idempotent operator recovery endpoint |
+| 10 | Add dead-letter routing and outbox retention policy |
+| 11 | Add OpenAPI YAML and Swagger UI documentation |
+| 12 | Add health probes and resource limits to Kubernetes manifests |
+| 13 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

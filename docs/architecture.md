@@ -51,9 +51,11 @@ relay the same due row concurrently.
 
 Delivery is at least once: a crash after Kafka acknowledgement but before the
 database commit can cause a repeat publication. The transaction service's
-payment-id uniqueness makes that repeat safe. Bounded exponential retry and
-terminal relay exhaustion are implemented; dead-letter routing, manual requeue, and
-outbox retention remain tracked in the [resilience guide](resilience.md).
+payment-id uniqueness makes that repeat safe. Bounded exponential retry,
+terminal relay exhaustion, and an internal locked recovery boundary are
+implemented. A secured operator adapter, recovery audit log, dead-letter
+routing, and outbox retention remain tracked in the
+[resilience guide](resilience.md).
 
 ## Deployment Topology
 

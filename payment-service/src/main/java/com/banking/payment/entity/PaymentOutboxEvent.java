@@ -128,6 +128,14 @@ public class PaymentOutboxEvent {
         this.exhaustedAt = exhaustedAt;
     }
 
+    public void requeue(Instant nextAttemptAt) {
+        this.status = PaymentOutboxStatus.PENDING;
+        this.attemptCount = 0;
+        this.nextAttemptAt = nextAttemptAt;
+        this.publishedAt = null;
+        this.exhaustedAt = null;
+    }
+
     public Long getId() {
         return id;
     }
