@@ -36,13 +36,14 @@ flowchart TD
 | 2026-09-04 | Payment idempotency | Required an idempotency key, stored only its hash, returned exact retries without duplicate writes or event sends, rejected conflicting reuse, and guarded concurrent requests with database uniqueness. | `mvn -T 1C clean test` |
 | 2026-09-07 | Payment outbox | Atomically queued payment events, added a scheduled acknowledged Kafka relay, persisted retry state, and protected concurrent publishers with row locking. | `mvn -T 1C clean test` |
 | 2026-09-08 | Outbox retry policy | Added capped exponential retry, configurable maximum attempts, terminal publication-exhaustion state, and persisted exhaustion coverage. | `mvn -T 1C clean test` |
+| 2026-09-09 | Outbox recovery | Added a transactional, row-locked internal recovery boundary that safely re-arms only exhausted events without exposing an unauthenticated operator endpoint. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add operator-controlled outbox requeue and dead-letter routing. |
-| Quality | Add lock-contention coverage for multiple publisher instances. |
+| Backend | Add a secured, audited, idempotent operator recovery endpoint. |
+| Quality | Add recovery-command idempotency and lock-contention coverage. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
 | Resilience | Add dead-letter routing, manual recovery, and outbox retention policy. |

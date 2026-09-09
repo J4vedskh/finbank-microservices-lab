@@ -107,6 +107,26 @@ accepted the event because a timeout can be ambiguous. The stored error is only
 the exception type so broker messages do not leak secrets. Manual requeue and
 dead-letter handling are still required.
 
+## Internal Recovery Boundary
+
+The payment service now has a transactional recovery operation for an exhausted
+outbox row. It locks the row, verifies that both the outbox and payment are in
+the matching exhaustion state, clears the exhaustion marker, resets the
+per-cycle attempt count, and makes the unchanged stored event due again. The
+previous safe error type remains available until the next publication outcome.
+
+Recovery itself never calls Kafka. The normal outbox publisher performs the new
+attempt after the recovery transaction commits, preserving the same locking,
+acknowledgement, and retry rules. A second recovery call is rejected once the
+new cycle is active. Requeueing authorizes another idempotent delivery attempt;
+it does not claim that the earlier timed-out delivery failed.
+
+This operation is deliberately not exposed through HTTP yet. The service has no
+operator authentication boundary, and an unauthenticated financial-event
+requeue endpoint would be unsafe. A future adapter must be deny-by-default,
+record authenticated actor and reason, make recovery commands idempotent, and
+return no event payload or sensitive persistence fields.
+
 ## Failure States
 
 | State | Meaning | Operator action |
@@ -125,5 +145,6 @@ dead-letter handling are still required.
 - [x] Add tests for repeated payment requests with the same key.
 - [x] Add a transactional outbox for recoverable payment event publication.
 - [x] Add bounded exponential retry and terminal relay exhaustion handling.
-- Add dead-letter routing and operator-controlled requeue.
+- [x] Add an internal locked recovery boundary for exhausted events.
+- Add a secured operator adapter, recovery audit log, and dead-letter routing.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.
