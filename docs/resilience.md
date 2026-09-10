@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, and stops after five failed sends by default. | Add dead-letter routing and operator-controlled requeue. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an internal audited recovery command. | Add a secured operator HTTP adapter, dead-letter routing, retention, and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -82,8 +82,8 @@ service sent directly after committing the payment.
 Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
-without a second ledger row. The relay retains all outbox rows; dead-letter
-routing, operator-controlled requeue, and retention remain future work.
+without a second ledger row. The relay retains all outbox rows; a secured
+operator adapter, dead-letter routing, and retention remain future work.
 
 ## Bounded Outbox Retry
 
@@ -104,28 +104,36 @@ When the final attempt fails, the outbox row receives an exhaustion timestamp,
 the payment moves to `PUBLISH_EXHAUSTED`, and the row is excluded from normal
 polling. This means the relay exhausted its policy; it does not prove Kafka never
 accepted the event because a timeout can be ambiguous. The stored error is only
-the exception type so broker messages do not leak secrets. Manual requeue and
-dead-letter handling are still required.
+the exception type so broker messages do not leak secrets. The internal
+recovery command can re-arm an exhausted event, while a secured
+operator adapter and dead-letter handling are still required.
 
-## Internal Recovery Boundary
+## Internal Audited, Idempotent Recovery Command
 
-The payment service now has a transactional recovery operation for an exhausted
-outbox row. It locks the row, verifies that both the outbox and payment are in
-the matching exhaustion state, clears the exhaustion marker, resets the
-per-cycle attempt count, and makes the unchanged stored event due again. The
-previous safe error type remains available until the next publication outcome.
+The payment service has an internal command for recovering an exhausted outbox
+row. It validates command metadata, stores only a SHA-256 digest of the opaque
+recovery key, locks the row, and verifies that both the outbox and payment are
+in the matching exhaustion state. One transaction then clears the exhaustion
+marker, resets the per-cycle attempt count, makes the unchanged event due, and
+appends a successful recovery audit row. The audit captures the caller-supplied
+actor and reason plus the prior exhaustion time, attempt count, and safe error
+type. The recovery state and audit either commit or roll back together.
 
 Recovery itself never calls Kafka. The normal outbox publisher performs the new
 attempt after the recovery transaction commits, preserving the same locking,
-acknowledgement, and retry rules. A second recovery call is rejected once the
-new cycle is active. Requeueing authorizes another idempotent delivery attempt;
-it does not claim that the earlier timed-out delivery failed.
+acknowledgement, and retry rules. Repeating the exact command key and metadata
+returns its original audit record without resetting a later attempt. Reusing a
+key for another event, actor, or reason fails as a command conflict. Requeueing
+authorizes another idempotent delivery attempt; it does not claim that the
+earlier timed-out delivery failed.
 
-This operation is deliberately not exposed through HTTP yet. The service has no
-operator authentication boundary, and an unauthenticated financial-event
-requeue endpoint would be unsafe. A future adapter must be deny-by-default,
-record authenticated actor and reason, make recovery commands idempotent, and
-return no event payload or sensitive persistence fields.
+This command is deliberately not exposed through HTTP. Its actor value is
+caller-supplied attribution, not proof of authentication. A future adapter must
+be deny-by-default, authenticate and authorize the operator, accept only
+non-sensitive inputs, and return no event payload or persistence details.
+Rejected attempts are not yet stored, application-level immutability is not a
+database permission boundary, and dead-letter routing, retention, and MySQL
+persistence and locking qualification remain pending.
 
 ## Failure States
 
@@ -135,7 +143,7 @@ return no event payload or sensitive persistence fields.
 | `PUBLISHED` | Payment event was acknowledged by Kafka. | Confirm consumer lag remains low. |
 | `COMPLETED` | Ledger entry was written successfully. | No action required. |
 | `PENDING_RETRY` | A retryable dependency failed. | Review retry queue and dependency health. |
-| `PUBLISH_EXHAUSTED` | The outbox exhausted its publication attempts; delivery may still be unknown. | Inspect Kafka and ledger state before future manual requeue. |
+| `PUBLISH_EXHAUSTED` | The outbox exhausted its publication attempts; delivery may still be unknown. | Inspect Kafka and ledger state before issuing the internal recovery command. |
 
 ## Implementation Checklist
 
@@ -145,6 +153,6 @@ return no event payload or sensitive persistence fields.
 - [x] Add tests for repeated payment requests with the same key.
 - [x] Add a transactional outbox for recoverable payment event publication.
 - [x] Add bounded exponential retry and terminal relay exhaustion handling.
-- [x] Add an internal locked recovery boundary for exhausted events.
-- Add a secured operator adapter, recovery audit log, and dead-letter routing.
+- [x] Add an internal locked, audited, idempotent recovery command for exhausted events.
+- Add a secured operator HTTP adapter, dead-letter routing, retention, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

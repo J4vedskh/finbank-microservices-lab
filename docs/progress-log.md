@@ -37,16 +37,17 @@ flowchart TD
 | 2026-09-07 | Payment outbox | Atomically queued payment events, added a scheduled acknowledged Kafka relay, persisted retry state, and protected concurrent publishers with row locking. | `mvn -T 1C clean test` |
 | 2026-09-08 | Outbox retry policy | Added capped exponential retry, configurable maximum attempts, terminal publication-exhaustion state, and persisted exhaustion coverage. | `mvn -T 1C clean test` |
 | 2026-09-09 | Outbox recovery | Added a transactional, row-locked internal recovery boundary that safely re-arms only exhausted events without exposing an unauthenticated operator endpoint. | `mvn -T 1C clean test` |
+| 2026-09-10 | Outbox recovery command | Added atomic recovery audit records, hashed command keys, exact-command replay, conflict handling, and rollback coverage without exposing an HTTP endpoint. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add a secured, audited, idempotent operator recovery endpoint. |
-| Quality | Add recovery-command idempotency and lock-contention coverage. |
+| Backend | Add a secured operator recovery HTTP adapter. |
+| Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
-| Resilience | Add dead-letter routing, manual recovery, and outbox retention policy. |
+| Resilience | Add dead-letter routing and outbox retention policy. |
 
 ## Review Standard
 

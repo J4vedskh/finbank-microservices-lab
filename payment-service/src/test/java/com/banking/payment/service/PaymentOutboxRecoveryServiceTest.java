@@ -2,155 +2,182 @@ package com.banking.payment.service;
 
 import com.banking.payment.entity.Payment;
 import com.banking.payment.entity.PaymentOutboxEvent;
-import com.banking.payment.entity.PaymentOutboxStatus;
-import com.banking.payment.repository.PaymentOutboxRepository;
+import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
+import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentOutboxRecoveryServiceTest {
-    private static final Instant NOW = Instant.parse("2026-09-09T05:30:00Z");
+    private static final String COMMAND_KEY = "recovery-command-0001";
+    private static final String COMMAND_KEY_HASH =
+            "f71582f21be13a45788c16ef3363ed0f0754eb75dfb4569f09bbebec1a4f8416";
+    private static final String ACTOR = "portfolio-operator";
+    private static final String REASON = "Re-arm after broker connectivity was restored";
+    private static final Instant RECOVERED_AT = Instant.parse("2026-09-10T05:30:00Z");
 
     @Mock
-    private PaymentOutboxRepository paymentOutboxRepository;
+    private PaymentOutboxRecoveryAuditRepository auditRepository;
+
+    @Mock
+    private PaymentOutboxRecoveryTransaction recoveryTransaction;
 
     @Test
-    void requeueExhausted_rearmsStoredEventWithoutChangingItsBusinessData() {
-        PaymentOutboxEvent event = exhaustedEvent();
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        String topic = event.getTopic();
-        String eventKey = event.getEventKey();
-        String payload = event.getPayload();
-        String lastError = event.getLastError();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
-                .thenReturn(Optional.of(event));
-
-        PaymentOutboxEvent result = recoveryService.requeueExhausted(7L);
-
-        assertThat(result).isSameAs(event);
-        assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
-        assertThat(event.getAttemptCount()).isZero();
-        assertThat(event.getExhaustedAt()).isNull();
-        assertThat(event.getNextAttemptAt()).isEqualTo(NOW);
-        assertThat(event.getPublishedAt()).isNull();
-        assertThat(event.getLastError()).isEqualTo(lastError);
-        assertThat(event.getTopic()).isEqualTo(topic);
-        assertThat(event.getEventKey()).isEqualTo(eventKey);
-        assertThat(event.getPayload()).isEqualTo(payload);
-        assertThat(event.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
-        verify(paymentOutboxRepository).findByIdForUpdate(7L);
-    }
-
-    @Test
-    void requeueExhausted_missingEvent_isRejected() {
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
+    void requeueExhausted_newCommandHashesOpaqueKeyAndDelegatesValidatedRequest() {
+        PaymentOutboxRecoveryAudit audit = audit(7L, ACTOR, REASON);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
                 .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenReturn(audit);
 
-        assertThatThrownBy(() -> recoveryService.requeueExhausted(7L))
-                .isInstanceOf(PaymentOutboxEventNotFoundException.class)
-                .hasMessage("Payment outbox event 7 was not found");
+        PaymentOutboxRecoveryAudit result = recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, "  " + ACTOR + "  ", "  " + REASON + "  ");
+
+        assertThat(result).isSameAs(audit);
+        ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
+        verify(auditRepository).findByRecoveryKeyHash(hashCaptor.capture());
+        assertThat(hashCaptor.getValue())
+                .isEqualTo(COMMAND_KEY_HASH)
+                .doesNotContain(COMMAND_KEY);
+        verify(recoveryTransaction).requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON);
     }
 
     @Test
-    void requeueExhausted_activeEvent_isRejectedWithoutResettingAttempts() {
-        PaymentOutboxEvent event = pendingEvent();
-        event.scheduleRetry(NOW.plusSeconds(10), "TimeoutException");
-        int attempts = event.getAttemptCount();
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
-                .thenReturn(Optional.of(event));
+    void requeueExhausted_exactCommandReplayReturnsStoredAuditWithoutAnotherRecovery() {
+        PaymentOutboxRecoveryAudit audit = audit(7L, ACTOR, REASON);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.of(audit));
 
-        assertThatThrownBy(() -> recoveryService.requeueExhausted(7L))
-                .isInstanceOf(PaymentOutboxRecoveryNotAllowedException.class);
+        PaymentOutboxRecoveryAudit result = recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON);
 
-        assertThat(event.getAttemptCount()).isEqualTo(attempts);
-        assertThat(event.getExhaustedAt()).isNull();
+        assertThat(result).isSameAs(audit);
+        verifyNoInteractions(recoveryTransaction);
     }
 
     @Test
-    void requeueExhausted_publishedEvent_isRejected() {
-        PaymentOutboxEvent event = pendingEvent();
-        event.markPublished(NOW.minusSeconds(1));
-        event.getPayment().setStatus("PUBLISHED");
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
-                .thenReturn(Optional.of(event));
+    void requeueExhausted_reusedKeyForDifferentRequestIsRejectedWithoutLeakingTheKey() {
+        PaymentOutboxRecoveryAudit audit = audit(8L, ACTOR, REASON);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.of(audit));
 
-        assertThatThrownBy(() -> recoveryService.requeueExhausted(7L))
-                .isInstanceOf(PaymentOutboxRecoveryNotAllowedException.class);
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isInstanceOf(PaymentOutboxRecoveryCommandConflictException.class)
+                .hasMessage("Recovery command key is already assigned to another request")
+                .hasMessageNotContaining(COMMAND_KEY)
+                .hasMessageNotContaining(COMMAND_KEY_HASH);
+
+        verifyNoInteractions(recoveryTransaction);
     }
 
     @Test
-    void requeueExhausted_inconsistentPaymentState_isRejected() {
-        PaymentOutboxEvent event = exhaustedEvent();
-        event.getPayment().setStatus("PENDING_RETRY");
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
-                .thenReturn(Optional.of(event));
+    void requeueExhausted_uniqueKeyRaceResolvesExactCommittedCommandAsReplay() {
+        PaymentOutboxRecoveryAudit audit = audit(7L, ACTOR, REASON);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty(), Optional.of(audit));
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(new DataIntegrityViolationException("unique constraint"));
 
-        assertThatThrownBy(() -> recoveryService.requeueExhausted(7L))
-                .isInstanceOf(PaymentOutboxRecoveryNotAllowedException.class);
+        PaymentOutboxRecoveryAudit result = recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON);
+
+        assertThat(result).isSameAs(audit);
+        verify(auditRepository, times(2)).findByRecoveryKeyHash(COMMAND_KEY_HASH);
     }
 
     @Test
-    void requeueExhausted_secondRecoveryCall_isRejected() {
-        PaymentOutboxEvent event = exhaustedEvent();
-        PaymentOutboxRecoveryService recoveryService = recoveryService();
-        when(paymentOutboxRepository.findByIdForUpdate(7L))
-                .thenReturn(Optional.of(event));
+    void requeueExhausted_uniqueKeyRaceWithDifferentRequestIsAConflict() {
+        PaymentOutboxRecoveryAudit audit = audit(8L, ACTOR, REASON);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty(), Optional.of(audit));
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(new DataIntegrityViolationException("unique constraint"));
 
-        recoveryService.requeueExhausted(7L);
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isInstanceOf(PaymentOutboxRecoveryCommandConflictException.class);
+    }
 
-        assertThatThrownBy(() -> recoveryService.requeueExhausted(7L))
-                .isInstanceOf(PaymentOutboxRecoveryNotAllowedException.class);
-        assertThat(event.getAttemptCount()).isZero();
+    @Test
+    void requeueExhausted_unrelatedIntegrityFailureIsNotHidden() {
+        DataIntegrityViolationException failure =
+                new DataIntegrityViolationException("unrelated constraint");
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isSameAs(failure);
+    }
+
+    @Test
+    void requeueExhausted_invalidCommandMetadataIsRejectedBeforePersistence() {
+        PaymentOutboxRecoveryService service = recoveryService();
+
+        assertThatThrownBy(() -> service.requeueExhausted(0L, COMMAND_KEY, ACTOR, REASON))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requeueExhausted(7L, "too-short", ACTOR, REASON))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requeueExhausted(7L, "recovery key with spaces", ACTOR, REASON))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requeueExhausted(7L, COMMAND_KEY, "   ", REASON))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.requeueExhausted(7L, COMMAND_KEY, ACTOR, "   "))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(auditRepository, never()).findByRecoveryKeyHash(anyString());
+        verifyNoInteractions(recoveryTransaction);
     }
 
     private PaymentOutboxRecoveryService recoveryService() {
-        return new PaymentOutboxRecoveryService(
-                paymentOutboxRepository,
-                Clock.fixed(NOW, ZoneOffset.UTC)
-        );
+        return new PaymentOutboxRecoveryService(auditRepository, recoveryTransaction);
     }
 
-    private PaymentOutboxEvent exhaustedEvent() {
-        PaymentOutboxEvent event = pendingEvent();
-        event.scheduleRetry(NOW.minusSeconds(5), "Failure1");
-        event.scheduleRetry(NOW.minusSeconds(4), "Failure2");
-        event.scheduleRetry(NOW.minusSeconds(3), "Failure3");
-        event.scheduleRetry(NOW.minusSeconds(2), "Failure4");
-        event.markExhausted(NOW.minusSeconds(1), "TimeoutException");
-        event.getPayment().setStatus("PUBLISH_EXHAUSTED");
-        return event;
-    }
-
-    private PaymentOutboxEvent pendingEvent() {
+    private PaymentOutboxRecoveryAudit audit(Long eventId, String actor, String reason) {
         Payment payment = new Payment();
         payment.setId(42L);
         payment.setFromAccount(1L);
         payment.setToAccount(2L);
         payment.setAmount(new BigDecimal("750.00"));
-        payment.setStatus("CREATED");
-        return new PaymentOutboxEvent(
+        payment.setStatus("PUBLISH_EXHAUSTED");
+        PaymentOutboxEvent event = new PaymentOutboxEvent(
                 payment,
                 "payments",
                 "42",
                 "42|1|2|750.00",
-                NOW.minusSeconds(10)
+                RECOVERED_AT.minusSeconds(30)
+        );
+        ReflectionTestUtils.setField(event, "id", eventId);
+        return new PaymentOutboxRecoveryAudit(
+                event,
+                COMMAND_KEY_HASH,
+                actor,
+                reason,
+                RECOVERED_AT,
+                RECOVERED_AT.minusSeconds(1),
+                5,
+                "TimeoutException"
         );
     }
 }
