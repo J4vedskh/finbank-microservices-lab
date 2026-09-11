@@ -28,6 +28,42 @@ Preview locally:
 mkdocs serve
 ```
 
+## Recovery Operator Access
+
+The payment service exposes one restricted recovery route. Supply both values
+through the runtime secret mechanism; never commit either value:
+
+```text
+PAYMENT_RECOVERY_OPERATOR_USERNAME=<dedicated-operator-name>
+PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH=<Spring-style {bcrypt} hash>
+```
+
+When both values are blank, no fallback operator exists and the recovery route
+returns HTTP `401`. Supplying only one value, an invalid username, plaintext
+password, a non-BCrypt value, or credentials without `server.ssl.enabled=true`
+stops startup instead of weakening access. Configure the standard Spring Boot
+`server.ssl.*` keystore settings through the deployment secret mechanism before
+activating the operator. Keep the raw client password in an approved secret
+store, not in repository files or shell history.
+
+This is a single-operator HTTP Basic boundary that is disabled by default. The
+application does not enforce loopback-only exposure or provide a TLS connector,
+but it requires a secure recovery request. The repository does not configure a
+separate clear-HTTP connector; the security filter redirects only an insecure
+servlet request that reaches it.
+Network exposure and TLS material remain deployment responsibilities. Proxy-only
+TLS termination and forwarded-scheme trust are not supported yet; external
+identity integration is also pending. Public payment routes plus health, info,
+and Prometheus endpoints remain allowlisted, while unlisted payment-service
+paths are denied.
+
+Recovery reasons are retained in the audit table. Never include credentials,
+tokens, event payloads, personal data, or secrets. The held Kubernetes
+Prometheus configuration still uses its default `/metrics` scrape path;
+aligning it to `/actuator/prometheus` remains pending until platform work is
+released. Both paths stay allowlisted so this security change does not further
+restrict the existing scraper.
+
 ## Local Infrastructure
 
 ```bash

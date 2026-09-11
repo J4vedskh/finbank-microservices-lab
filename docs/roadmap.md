@@ -33,11 +33,12 @@ gantt
 | 6 | Completed: add a transactional outbox with acknowledged Kafka relay |
 | 7 | Completed: add capped exponential outbox retry and terminal exhaustion |
 | 8 | Completed: add an internal row-locked, audited, idempotent recovery command |
-| 9 | Add a secured operator recovery HTTP adapter |
-| 10 | Add dead-letter routing, outbox retention, and MySQL recovery-lock qualification |
-| 11 | Add OpenAPI YAML and Swagger UI documentation |
-| 12 | Add health probes and resource limits to Kubernetes manifests |
-| 13 | Add Prometheus dashboard documentation and screenshots |
+| 9 | Completed: add a fail-closed HTTP Basic operator recovery adapter |
+| 10 | Add rejected-recovery audit plus trusted-proxy and external identity integration |
+| 11 | Add dead-letter routing, outbox retention, and MySQL recovery-lock qualification |
+| 12 | Add Swagger UI and expand OpenAPI documentation |
+| 13 | Add health probes and resource limits to Kubernetes manifests |
+| 14 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

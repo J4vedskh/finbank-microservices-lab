@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an internal audited recovery command. | Add a secured operator HTTP adapter, dead-letter routing, retention, and MySQL qualification. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an audited command through a restricted operator adapter. | Add rejected-attempt audit, dead-letter routing, retention, and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -82,8 +82,8 @@ service sent directly after committing the payment.
 Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
-without a second ledger row. The relay retains all outbox rows; a secured
-operator adapter, dead-letter routing, and retention remain future work.
+without a second ledger row. The relay retains all outbox rows; rejected-attempt
+audit, dead-letter routing, and retention remain future work.
 
 ## Bounded Outbox Retry
 
@@ -104,9 +104,9 @@ When the final attempt fails, the outbox row receives an exhaustion timestamp,
 the payment moves to `PUBLISH_EXHAUSTED`, and the row is excluded from normal
 polling. This means the relay exhausted its policy; it does not prove Kafka never
 accepted the event because a timeout can be ambiguous. The stored error is only
-the exception type so broker messages do not leak secrets. The internal
-recovery command can re-arm an exhausted event, while a secured
-operator adapter and dead-letter handling are still required.
+the exception type so broker messages do not leak secrets. The restricted
+operator adapter can re-arm an exhausted event, while rejected-attempt audit
+and dead-letter handling are still required.
 
 ## Internal Audited, Idempotent Recovery Command
 
@@ -127,13 +127,28 @@ key for another event, actor, or reason fails as a command conflict. Requeueing
 authorizes another idempotent delivery attempt; it does not claim that the
 earlier timed-out delivery failed.
 
-This command is deliberately not exposed through HTTP. Its actor value is
-caller-supplied attribution, not proof of authentication. A future adapter must
-be deny-by-default, authenticate and authorize the operator, accept only
-non-sensitive inputs, and return no event payload or persistence details.
-Rejected attempts are not yet stored, application-level immutability is not a
-database permission boundary, and dead-letter routing, retention, and MySQL
-persistence and locking qualification remain pending.
+A restricted HTTP adapter now authenticates one configured operator with HTTP
+Basic before invoking this command. It is fail-closed: no default account is
+created, both the username and a Spring-style BCrypt hash must come from the
+runtime environment, operator credentials require `server.ssl.enabled=true`,
+and partial or invalid configuration stops startup. The authenticated principal
+becomes the audit actor, so an HTTP request cannot supply or override that
+identity. The response includes only the event id and original requeue time; it
+excludes command keys, hashes, reasons, event data, and persistence details.
+Because the reason is retained in the audit table, it must never contain
+credentials, tokens, payloads, personal data, or secrets.
+Public payment routes plus health, info, and monitoring paths remain
+allowlisted, while unlisted payment-service paths are denied.
+
+HTTP Basic does not provide transport security, so the recovery route requires
+a secure request. The application relies on a Spring Boot TLS connector
+configured through external `server.ssl.*` settings and does not add a separate
+clear-HTTP connector. Proxy-only TLS termination and forwarded-scheme trust are
+not supported yet.
+Network exposure and TLS material remain deployment responsibilities. External
+identity integration is not provided yet. Rejected attempts are not yet stored,
+immutability is not a database permission boundary, and dead-letter routing,
+retention, and MySQL persistence and locking qualification remain pending.
 
 ## Failure States
 
@@ -154,5 +169,6 @@ persistence and locking qualification remain pending.
 - [x] Add a transactional outbox for recoverable payment event publication.
 - [x] Add bounded exponential retry and terminal relay exhaustion handling.
 - [x] Add an internal locked, audited, idempotent recovery command for exhausted events.
-- Add a secured operator HTTP adapter, dead-letter routing, retention, and MySQL qualification.
+- [x] Add a fail-closed HTTP Basic operator adapter with principal-derived audit identity.
+- Add trusted-proxy and external identity support, rejected-attempt audit, dead-letter routing, retention, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

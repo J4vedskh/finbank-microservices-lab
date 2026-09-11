@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.1.0
+  version: 0.2.0
   description: Contract sketch for the account, payment, and transaction services.
 servers:
   - url: http://localhost:8081
@@ -13,6 +13,7 @@ servers:
 tags:
   - name: Accounts
   - name: Payments
+  - name: Payment Operations
   - name: Transactions
 paths:
   /accounts:
@@ -89,6 +90,67 @@ paths:
           description: Idempotency key or payment request failed validation
         "409":
           description: Idempotency key was already used for a different payment
+  /internal/payment-outbox/{eventId}/recovery:
+    post:
+      tags: [Payment Operations]
+      summary: Re-arm an exhausted payment outbox event
+      description: >-
+        Restricted operator command. The authenticated principal is recorded as
+        the audit actor. An exact command replay returns the original receipt.
+        The application requires the request to arrive through its HTTPS connector.
+      servers:
+        - url: https://localhost:8082
+          description: Payment Service with its HTTPS connector enabled
+      security:
+        - recoveryOperator: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: High-entropy command key; the service stores only its SHA-256 digest.
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 128
+            pattern: '^[!-~]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentOutboxRecoveryRequest"
+      responses:
+        "200":
+          description: Recovery accepted or the exact prior command replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentOutboxRecoveryResponse"
+        "400":
+          description: Event id, command key, or reason failed validation
+        "401":
+          description: Recovery operator credentials are missing or invalid
+        "403":
+          description: Authenticated identity lacks the recovery authority
+        "404":
+          description: Outbox event was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Event is ineligible or the command key conflicts
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /transactions:
     get:
       tags: [Transactions]
@@ -123,6 +185,13 @@ paths:
                 items:
                   $ref: "#/components/schemas/Transaction"
 components:
+  securitySchemes:
+    recoveryOperator:
+      type: http
+      scheme: basic
+      description: >-
+        Dedicated operator credential supplied through runtime configuration.
+        The Spring Boot TLS connector must be enabled before credentials activate.
   schemas:
     Account:
       type: object
@@ -197,6 +266,38 @@ components:
           exclusiveMinimum: true
           multipleOf: 0.01
           example: 750.00
+    PaymentOutboxRecoveryRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          pattern: '.*\S.*'
+          description: >-
+            Non-sensitive operational reason retained in the audit record.
+            Must not contain credentials, tokens, payloads, personal data, or secrets.
+    PaymentOutboxRecoveryResponse:
+      type: object
+      required: [eventId, requeuedAt]
+      properties:
+        eventId:
+          type: integer
+          format: int64
+        requeuedAt:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      properties:
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        detail:
+          type: string
     Transaction:
       type: object
       properties:

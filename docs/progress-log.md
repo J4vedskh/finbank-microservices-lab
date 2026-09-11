@@ -38,16 +38,17 @@ flowchart TD
 | 2026-09-08 | Outbox retry policy | Added capped exponential retry, configurable maximum attempts, terminal publication-exhaustion state, and persisted exhaustion coverage. | `mvn -T 1C clean test` |
 | 2026-09-09 | Outbox recovery | Added a transactional, row-locked internal recovery boundary that safely re-arms only exhausted events without exposing an unauthenticated operator endpoint. | `mvn -T 1C clean test` |
 | 2026-09-10 | Outbox recovery command | Added atomic recovery audit records, hashed command keys, exact-command replay, conflict handling, and rollback coverage without exposing an HTTP endpoint. | `mvn -T 1C clean test` |
+| 2026-09-11 | Recovery access control | Added an HTTPS-required, fail-closed HTTP Basic operator adapter with environment-supplied BCrypt credentials, principal-derived audit identity, safe receipts, and explicit route authorization. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add a secured operator recovery HTTP adapter. |
+| Backend | Record rejected recovery attempts without persisting sensitive request data. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
-| Resilience | Add dead-letter routing and outbox retention policy. |
+| Resilience | Add trusted-proxy and external identity integration, then dead-letter routing and outbox retention. |
 
 ## Review Standard
 
