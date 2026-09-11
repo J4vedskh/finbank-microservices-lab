@@ -53,8 +53,11 @@ Delivery is at least once: a crash after Kafka acknowledgement but before the
 database commit can cause a repeat publication. The transaction service's
 payment-id uniqueness makes that repeat safe. Bounded exponential retry,
 terminal relay exhaustion, and an internal row-locked, audited, idempotent
-recovery command are implemented. A secured operator HTTP adapter, dead-letter
-routing, outbox retention, and MySQL qualification remain tracked in the
+recovery command are implemented. A fail-closed HTTP Basic adapter authenticates
+the configured operator only through an enabled HTTPS connector and supplies
+its principal name as the audit actor. Trusted-proxy and external identity
+support, rejected-attempt audit, dead-letter routing, outbox retention, and
+MySQL qualification remain tracked in the
 [resilience guide](resilience.md).
 
 ## Deployment Topology
