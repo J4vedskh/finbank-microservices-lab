@@ -55,9 +55,10 @@ payment-id uniqueness makes that repeat safe. Bounded exponential retry,
 terminal relay exhaustion, and an internal row-locked, audited, idempotent
 recovery command are implemented. A fail-closed HTTP Basic adapter authenticates
 the configured operator only through an enabled HTTPS connector and supplies
-its principal name as the audit actor. Trusted-proxy and external identity
-support, rejected-attempt audit, dead-letter routing, outbox retention, and
-MySQL qualification remain tracked in the
+its principal name as the successful-command audit actor. Known business
+rejections commit a separate minimal journal containing only requested event id,
+fixed code, and server time. Trusted-proxy and external identity support,
+dead-letter routing, outbox retention, and MySQL qualification remain tracked in the
 [resilience guide](resilience.md).
 
 ## Deployment Topology

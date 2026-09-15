@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an audited command through a restricted operator adapter. | Add rejected-attempt audit, dead-letter routing, retention, and MySQL qualification. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an audited command plus minimal business-rejection journal. | Add dead-letter routing, retention, and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -82,8 +82,8 @@ service sent directly after committing the payment.
 Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
-without a second ledger row. The relay retains all outbox rows; rejected-attempt
-audit, dead-letter routing, and retention remain future work.
+without a second ledger row. The relay retains all outbox rows; dead-letter
+routing and retention remain future work.
 
 ## Bounded Outbox Retry
 
@@ -105,8 +105,8 @@ the payment moves to `PUBLISH_EXHAUSTED`, and the row is excluded from normal
 polling. This means the relay exhausted its policy; it does not prove Kafka never
 accepted the event because a timeout can be ambiguous. The stored error is only
 the exception type so broker messages do not leak secrets. The restricted
-operator adapter can re-arm an exhausted event, while rejected-attempt audit
-and dead-letter handling are still required.
+operator adapter can re-arm an exhausted event, while dead-letter handling is
+still required.
 
 ## Internal Audited, Idempotent Recovery Command
 
@@ -138,7 +138,8 @@ excludes command keys, hashes, reasons, event data, and persistence details.
 Because the reason is retained in the audit table, it must never contain
 credentials, tokens, payloads, personal data, or secrets.
 Public payment routes plus health, info, and monitoring paths remain
-allowlisted, while unlisted payment-service paths are denied.
+allowlisted. Apart from the framework `/error` dispatch, unlisted
+payment-service paths are denied.
 
 HTTP Basic does not provide transport security, so the recovery route requires
 a secure request. The application relies on a Spring Boot TLS connector
@@ -146,9 +147,27 @@ configured through external `server.ssl.*` settings and does not add a separate
 clear-HTTP connector. Proxy-only TLS termination and forwarded-scheme trust are
 not supported yet.
 Network exposure and TLS material remain deployment responsibilities. External
-identity integration is not provided yet. Rejected attempts are not yet stored,
-immutability is not a database permission boundary, and dead-letter routing,
-retention, and MySQL persistence and locking qualification remain pending.
+identity integration is not provided yet. Immutability is not a database
+permission boundary, and dead-letter routing, retention, and MySQL persistence
+and locking qualification remain pending.
+
+### Minimal Business-Rejection Journal
+
+After authentication and request validation succeed, three known business
+rejections are journaled: missing event, event not eligible, and recovery-command
+conflict. Any recovery transaction has already committed or rolled back—or the
+conflict was found before one started—when a separate transaction stores only
+the requested event id, a fixed rejection code, and the server rejection time.
+It intentionally has no event foreign key so a missing-event rejection can be
+retained.
+
+The rejection journal does not store actor identity, raw or hashed command key,
+reason/body, headers, payload or event key, payment/account data, status or
+attempt details, or exception text. Validation, authentication, authorization,
+insecure-request, and unexpected infrastructure failures are outside this
+business journal. If a known rejection cannot be journaled, the service returns
+a generic `503 Service Unavailable` instead of disclosing the original `404` or
+`409`; the rejected attempt commits no recovery state change.
 
 ## Failure States
 
@@ -170,5 +189,6 @@ retention, and MySQL persistence and locking qualification remain pending.
 - [x] Add bounded exponential retry and terminal relay exhaustion handling.
 - [x] Add an internal locked, audited, idempotent recovery command for exhausted events.
 - [x] Add a fail-closed HTTP Basic operator adapter with principal-derived audit identity.
-- Add trusted-proxy and external identity support, rejected-attempt audit, dead-letter routing, retention, and MySQL qualification.
+- [x] Journal known business rejections without sensitive request or identity data.
+- Add trusted-proxy and external identity support, dead-letter routing, retention, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

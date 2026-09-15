@@ -98,6 +98,8 @@ paths:
         Restricted operator command. The authenticated principal is recorded as
         the audit actor. An exact command replay returns the original receipt.
         The application requires the request to arrive through its HTTPS connector.
+        Business-level not-found, ineligible, and command-conflict rejections are
+        journaled using only requested event id, fixed code, and server timestamp.
       servers:
         - url: https://localhost:8082
           description: Payment Service with its HTTPS connector enabled
@@ -134,19 +136,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaymentOutboxRecoveryResponse"
         "400":
-          description: Event id, command key, or reason failed validation
+          description: Event id, command key, or reason failed validation; not business-audited
         "401":
-          description: Recovery operator credentials are missing or invalid
+          description: Recovery operator credentials are missing or invalid; not business-audited
         "403":
-          description: Authenticated identity lacks the recovery authority
+          description: Authenticated identity lacks recovery authority; not business-audited
         "404":
-          description: Outbox event was not found
+          description: Outbox event was not found and the business rejection was journaled
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: Event is ineligible or the command key conflicts
+          description: Event is ineligible or the command conflicts; rejection was journaled
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: Business rejection could not be journaled, so its original outcome is withheld
           content:
             application/problem+json:
               schema:

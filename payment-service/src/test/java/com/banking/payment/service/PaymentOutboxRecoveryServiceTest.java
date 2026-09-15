@@ -3,22 +3,29 @@ package com.banking.payment.service;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
+import com.banking.payment.entity.PaymentOutboxRecoveryRejectionCode;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionSystemException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -40,6 +47,9 @@ class PaymentOutboxRecoveryServiceTest {
     @Mock
     private PaymentOutboxRecoveryTransaction recoveryTransaction;
 
+    @Mock
+    private PaymentOutboxRecoveryRejectionAuditTransaction rejectionAuditTransaction;
+
     @Test
     void requeueExhausted_newCommandHashesOpaqueKeyAndDelegatesValidatedRequest() {
         PaymentOutboxRecoveryAudit audit = audit(7L, ACTOR, REASON);
@@ -58,6 +68,7 @@ class PaymentOutboxRecoveryServiceTest {
                 .isEqualTo(COMMAND_KEY_HASH)
                 .doesNotContain(COMMAND_KEY);
         verify(recoveryTransaction).requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON);
+        verifyNoInteractions(rejectionAuditTransaction);
     }
 
     @Test
@@ -71,6 +82,7 @@ class PaymentOutboxRecoveryServiceTest {
 
         assertThat(result).isSameAs(audit);
         verifyNoInteractions(recoveryTransaction);
+        verifyNoInteractions(rejectionAuditTransaction);
     }
 
     @Test
@@ -87,6 +99,10 @@ class PaymentOutboxRecoveryServiceTest {
                 .hasMessageNotContaining(COMMAND_KEY_HASH);
 
         verifyNoInteractions(recoveryTransaction);
+        verify(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.COMMAND_CONFLICT
+        );
     }
 
     @Test
@@ -102,6 +118,7 @@ class PaymentOutboxRecoveryServiceTest {
 
         assertThat(result).isSameAs(audit);
         verify(auditRepository, times(2)).findByRecoveryKeyHash(COMMAND_KEY_HASH);
+        verifyNoInteractions(rejectionAuditTransaction);
     }
 
     @Test
@@ -115,6 +132,99 @@ class PaymentOutboxRecoveryServiceTest {
         assertThatThrownBy(() -> recoveryService()
                 .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
                 .isInstanceOf(PaymentOutboxRecoveryCommandConflictException.class);
+
+        verify(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.COMMAND_CONFLICT
+        );
+    }
+
+    @Test
+    void requeueExhausted_missingEventRecordsMinimalRejectionThenPropagates() {
+        PaymentOutboxEventNotFoundException failure =
+                new PaymentOutboxEventNotFoundException(7L);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isSameAs(failure);
+
+        verify(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.EVENT_NOT_FOUND
+        );
+    }
+
+    @Test
+    void requeueExhausted_ineligibleEventRecordsMinimalRejectionThenPropagates() {
+        PaymentOutboxRecoveryNotAllowedException failure =
+                new PaymentOutboxRecoveryNotAllowedException(7L);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isSameAs(failure);
+
+        verify(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.EVENT_NOT_ELIGIBLE
+        );
+    }
+
+    @Test
+    void requeueExhausted_rejectionAuditFailureMasksBusinessOutcome() {
+        PaymentOutboxEventNotFoundException businessFailure =
+                new PaymentOutboxEventNotFoundException(7L);
+        PaymentOutboxRecoveryRejectionAuditUnavailableException auditFailure =
+                new PaymentOutboxRecoveryRejectionAuditUnavailableException(
+                        new DataIntegrityViolationException("database detail")
+                );
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(businessFailure);
+        doThrow(auditFailure).when(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.EVENT_NOT_FOUND
+        );
+
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isSameAs(auditFailure)
+                .hasMessage("Recovery rejection audit is unavailable")
+                .hasMessageNotContaining("database detail")
+                .hasMessageNotContaining(COMMAND_KEY)
+                .hasMessageNotContaining(REASON);
+    }
+
+    @ParameterizedTest
+    @MethodSource("transactionBoundaryFailures")
+    void requeueExhausted_transactionBoundaryAuditFailureBecomesSafeUnavailable(
+            RuntimeException transactionFailure
+    ) {
+        PaymentOutboxEventNotFoundException businessFailure =
+                new PaymentOutboxEventNotFoundException(7L);
+        when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
+                .thenReturn(Optional.empty());
+        when(recoveryTransaction.requeueExhausted(7L, COMMAND_KEY_HASH, ACTOR, REASON))
+                .thenThrow(businessFailure);
+        doThrow(transactionFailure).when(rejectionAuditTransaction).record(
+                7L,
+                PaymentOutboxRecoveryRejectionCode.EVENT_NOT_FOUND
+        );
+
+        assertThatThrownBy(() -> recoveryService()
+                .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
+                .isInstanceOf(PaymentOutboxRecoveryRejectionAuditUnavailableException.class)
+                .hasMessage("Recovery rejection audit is unavailable")
+                .hasMessageNotContaining(transactionFailure.getMessage())
+                .hasCause(transactionFailure);
     }
 
     @Test
@@ -129,6 +239,8 @@ class PaymentOutboxRecoveryServiceTest {
         assertThatThrownBy(() -> recoveryService()
                 .requeueExhausted(7L, COMMAND_KEY, ACTOR, REASON))
                 .isSameAs(failure);
+
+        verifyNoInteractions(rejectionAuditTransaction);
     }
 
     @Test
@@ -148,10 +260,22 @@ class PaymentOutboxRecoveryServiceTest {
 
         verify(auditRepository, never()).findByRecoveryKeyHash(anyString());
         verifyNoInteractions(recoveryTransaction);
+        verifyNoInteractions(rejectionAuditTransaction);
     }
 
     private PaymentOutboxRecoveryService recoveryService() {
-        return new PaymentOutboxRecoveryService(auditRepository, recoveryTransaction);
+        return new PaymentOutboxRecoveryService(
+                auditRepository,
+                recoveryTransaction,
+                rejectionAuditTransaction
+        );
+    }
+
+    private static Stream<RuntimeException> transactionBoundaryFailures() {
+        return Stream.of(
+                new CannotCreateTransactionException("transaction start detail"),
+                new TransactionSystemException("transaction commit detail")
+        );
     }
 
     private PaymentOutboxRecoveryAudit audit(Long eventId, String actor, String reason) {

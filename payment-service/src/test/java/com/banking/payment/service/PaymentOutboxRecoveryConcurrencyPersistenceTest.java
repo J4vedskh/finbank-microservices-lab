@@ -3,7 +3,9 @@ package com.banking.payment.service;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
+import com.banking.payment.entity.PaymentOutboxRecoveryRejectionCode;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
+import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import com.banking.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
@@ -33,7 +35,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @DataJpaTest
-@Import({PaymentOutboxRecoveryService.class, PaymentOutboxRecoveryTransaction.class})
+@Import({
+        PaymentOutboxRecoveryService.class,
+        PaymentOutboxRecoveryTransaction.class,
+        PaymentOutboxRecoveryRejectionAuditTransaction.class
+})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentOutboxRecoveryConcurrencyPersistenceTest {
     private static final String COMMAND_KEY = "shared-recovery-command-0001";
@@ -54,6 +60,9 @@ class PaymentOutboxRecoveryConcurrencyPersistenceTest {
 
     @Autowired
     private PaymentOutboxRecoveryAuditRepository auditRepository;
+
+    @Autowired
+    private PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository;
 
     @Test
     void requeueExhausted_concurrentKeyReuseChoosesOneCommandAndRollsBackTheOther() throws Exception {
@@ -106,6 +115,12 @@ class PaymentOutboxRecoveryConcurrencyPersistenceTest {
                     .findFirst()
                     .orElseThrow();
             assertThat(winningEventId).isNotEqualTo(losingEventId);
+            assertThat(rejectionAuditRepository.findAll()).singleElement()
+                    .satisfies(rejection -> {
+                        assertThat(rejection.getRequestedEventId()).isEqualTo(losingEventId);
+                        assertThat(rejection.getRejectionCode())
+                                .isEqualTo(PaymentOutboxRecoveryRejectionCode.COMMAND_CONFLICT);
+                    });
 
             assertThat(paymentOutboxRepository.findById(winningEventId)).hasValueSatisfying(event -> {
                 assertThat(event.getAttemptCount()).isZero();

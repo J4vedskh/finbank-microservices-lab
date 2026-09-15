@@ -95,7 +95,13 @@ An exact command replay returns the original requeue time without resetting the
 event again. On a secure request, missing or invalid inputs return `400`,
 missing authentication returns `401`, insufficient authority returns `403`, an
 unknown event returns `404`, and an ineligible event or conflicting command key
-returns `409`.
+returns `409`. These business rejections are journaled before the response. The
+journal stores only the requested event ID, a fixed rejection code, and a server
+timestamp—never identity, command keys or hashes, reason/body, headers, payload,
+payment/account data, or exception text. Validation, authentication,
+authorization, insecure-request, and infrastructure failures are not business
+rejection records. If the journal cannot be written, the original `404`/`409`
+is withheld and the endpoint returns a generic `503` instead.
 Responses never include the raw key, its digest, the stored event payload, the
 reason, or persistence details. HTTP Basic does not provide transport security.
 The security filter rejects an insecure servlet request, and configured operator
