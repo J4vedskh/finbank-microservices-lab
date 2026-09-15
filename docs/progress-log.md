@@ -39,12 +39,13 @@ flowchart TD
 | 2026-09-09 | Outbox recovery | Added a transactional, row-locked internal recovery boundary that safely re-arms only exhausted events without exposing an unauthenticated operator endpoint. | `mvn -T 1C clean test` |
 | 2026-09-10 | Outbox recovery command | Added atomic recovery audit records, hashed command keys, exact-command replay, conflict handling, and rollback coverage without exposing an HTTP endpoint. | `mvn -T 1C clean test` |
 | 2026-09-11 | Recovery access control | Added an HTTPS-required, fail-closed HTTP Basic operator adapter with environment-supplied BCrypt credentials, principal-derived audit identity, safe receipts, and explicit route authorization. | `mvn -T 1C clean test` |
+| 2026-09-15 | Recovery rejection audit | Added a separate journal for missing-event, ineligible-event, and command-conflict rejections containing only event id, fixed code, and server time; audit-write failure now returns a safe `503`. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Record rejected recovery attempts without persisting sensitive request data. |
+| Backend | Add bounded retention for published outbox and recovery audit rows. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

@@ -54,12 +54,16 @@ servlet request that reaches it.
 Network exposure and TLS material remain deployment responsibilities. Proxy-only
 TLS termination and forwarded-scheme trust are not supported yet; external
 identity integration is also pending. Public payment routes plus health, info,
-and Prometheus endpoints remain allowlisted, while unlisted payment-service
-paths are denied.
+and Prometheus endpoints remain allowlisted. Apart from the framework `/error`
+dispatch, unlisted payment-service paths are denied.
 
-Recovery reasons are retained in the audit table. Never include credentials,
-tokens, event payloads, personal data, or secrets. The held Kubernetes
-Prometheus configuration still uses its default `/metrics` scrape path;
+Successful recovery reasons are retained in the successful-command audit table.
+Never include credentials, tokens, event payloads, personal data, or secrets.
+Rejected business commands use a different journal containing only requested
+event id, fixed rejection code, and server time. If that journal is unavailable,
+the API returns a generic `503` rather than the original `404` or `409`.
+
+The held Kubernetes Prometheus configuration still uses its default `/metrics` scrape path;
 aligning it to `/actuator/prometheus` remains pending until platform work is
 released. Both paths stay allowlisted so this security change does not further
 restrict the existing scraper.

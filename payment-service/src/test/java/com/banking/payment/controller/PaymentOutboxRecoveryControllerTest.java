@@ -7,6 +7,7 @@ import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.service.PaymentOutboxEventNotFoundException;
 import com.banking.payment.service.PaymentOutboxRecoveryCommandConflictException;
 import com.banking.payment.service.PaymentOutboxRecoveryNotAllowedException;
+import com.banking.payment.service.PaymentOutboxRecoveryRejectionAuditUnavailableException;
 import com.banking.payment.service.PaymentOutboxRecoveryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -230,6 +232,30 @@ class PaymentOutboxRecoveryControllerTest {
                         .value("Recovery command key is already assigned to another request"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString(COMMAND_KEY)
+                )));
+    }
+
+    @Test
+    void requeueExhausted_rejectionAuditFailureReturnsSafeServiceUnavailableProblem()
+            throws Exception {
+        when(recoveryService.requeueExhausted(anyLong(), anyString(), anyString(), anyString()))
+                .thenThrow(new PaymentOutboxRecoveryRejectionAuditUnavailableException(
+                        new DataIntegrityViolationException("database constraint detail")
+                ));
+
+        mockMvc.perform(validRequest().with(httpBasic(USERNAME, PASSWORD)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.title").value("Recovery audit unavailable"))
+                .andExpect(jsonPath("$.detail").value("Recovery attempt could not be audited"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.anyOf(
+                                org.hamcrest.Matchers.containsString(COMMAND_KEY),
+                                org.hamcrest.Matchers.containsString(REASON),
+                                org.hamcrest.Matchers.containsString("database constraint"),
+                                org.hamcrest.Matchers.containsString("recoveryKeyHash"),
+                                org.hamcrest.Matchers.containsString("payload")
+                        )
                 )));
     }
 

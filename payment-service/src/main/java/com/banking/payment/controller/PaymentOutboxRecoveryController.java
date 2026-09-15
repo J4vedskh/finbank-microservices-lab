@@ -6,6 +6,7 @@ import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.service.PaymentOutboxEventNotFoundException;
 import com.banking.payment.service.PaymentOutboxRecoveryCommandConflictException;
 import com.banking.payment.service.PaymentOutboxRecoveryNotAllowedException;
+import com.banking.payment.service.PaymentOutboxRecoveryRejectionAuditUnavailableException;
 import com.banking.payment.service.PaymentOutboxRecoveryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -65,6 +66,15 @@ public class PaymentOutboxRecoveryController {
     @ExceptionHandler(PaymentOutboxRecoveryCommandConflictException.class)
     ProblemDetail handleCommandConflict(PaymentOutboxRecoveryCommandConflictException failure) {
         return problem(HttpStatus.CONFLICT, "Recovery command conflict", failure.getMessage());
+    }
+
+    @ExceptionHandler(PaymentOutboxRecoveryRejectionAuditUnavailableException.class)
+    ProblemDetail handleRejectionAuditUnavailable() {
+        return problem(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Recovery audit unavailable",
+                "Recovery attempt could not be audited"
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

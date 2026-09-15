@@ -6,6 +6,7 @@ import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.entity.PaymentOutboxStatus;
 import com.banking.payment.messaging.PaymentOutboxPublisher;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
+import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import com.banking.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.when;
 @Import({
         PaymentOutboxRecoveryService.class,
         PaymentOutboxRecoveryTransaction.class,
+        PaymentOutboxRecoveryRejectionAuditTransaction.class,
         PaymentOutboxPublisher.class
 })
 @TestPropertySource(properties = {
@@ -63,11 +65,15 @@ class PaymentOutboxRecoveryPersistenceTest {
     @Autowired
     private PaymentOutboxRecoveryAuditRepository auditRepository;
 
+    @Autowired
+    private PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository;
+
     @MockBean
     private KafkaTemplate<String, String> kafkaTemplate;
 
     @AfterEach
     void clearCommittedFixtures() {
+        rejectionAuditRepository.deleteAllInBatch();
         auditRepository.deleteAllInBatch();
         paymentOutboxRepository.deleteAllInBatch();
         paymentRepository.deleteAllInBatch();
@@ -103,6 +109,7 @@ class PaymentOutboxRecoveryPersistenceTest {
         assertThat(storedAudit.getPreviousExhaustedAt()).isEqualTo(exhaustedAt);
         assertThat(storedAudit.getPreviousAttemptCount()).isEqualTo(attemptCount);
         assertThat(storedAudit.getPreviousLastError()).isEqualTo("TimeoutException");
+        assertThat(rejectionAuditRepository.count()).isZero();
         verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
     }
 
@@ -128,6 +135,7 @@ class PaymentOutboxRecoveryPersistenceTest {
         assertThat(unchanged.getAttemptCount()).isEqualTo(1);
         assertThat(unchanged.getNextAttemptAt()).isEqualTo(retryAt);
         assertThat(unchanged.getLastError()).isEqualTo("RetryFailure");
+        assertThat(rejectionAuditRepository.count()).isZero();
         verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
     }
 
@@ -153,6 +161,7 @@ class PaymentOutboxRecoveryPersistenceTest {
                 .hasValueSatisfying(payment ->
                         assertThat(payment.getStatus()).isEqualTo("PUBLISHED"));
         assertThat(auditRepository.count()).isEqualTo(1);
+        assertThat(rejectionAuditRepository.count()).isZero();
         verify(kafkaTemplate).send(event.getTopic(), event.getEventKey(), event.getPayload());
     }
 

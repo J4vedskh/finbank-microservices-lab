@@ -1,6 +1,7 @@
 package com.banking.payment.service;
 
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
+import com.banking.payment.entity.PaymentOutboxRecoveryRejectionCode;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,13 +22,16 @@ public class PaymentOutboxRecoveryService {
 
     private final PaymentOutboxRecoveryAuditRepository auditRepository;
     private final PaymentOutboxRecoveryTransaction recoveryTransaction;
+    private final PaymentOutboxRecoveryRejectionAuditTransaction rejectionAuditTransaction;
 
     public PaymentOutboxRecoveryService(
             PaymentOutboxRecoveryAuditRepository auditRepository,
-            PaymentOutboxRecoveryTransaction recoveryTransaction
+            PaymentOutboxRecoveryTransaction recoveryTransaction,
+            PaymentOutboxRecoveryRejectionAuditTransaction rejectionAuditTransaction
     ) {
         this.auditRepository = auditRepository;
         this.recoveryTransaction = recoveryTransaction;
+        this.rejectionAuditTransaction = rejectionAuditTransaction;
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -43,25 +47,72 @@ public class PaymentOutboxRecoveryService {
         String normalizedReason = normalizeRequired(reason, "reason", MAX_REASON_LENGTH);
         String recoveryKeyHash = sha256(recoveryKey);
 
+        try {
+            return attemptRecovery(
+                    eventId,
+                    recoveryKeyHash,
+                    normalizedActor,
+                    normalizedReason
+            );
+        } catch (PaymentOutboxEventNotFoundException failure) {
+            recordRejection(
+                    eventId,
+                    PaymentOutboxRecoveryRejectionCode.EVENT_NOT_FOUND
+            );
+            throw failure;
+        } catch (PaymentOutboxRecoveryNotAllowedException failure) {
+            recordRejection(
+                    eventId,
+                    PaymentOutboxRecoveryRejectionCode.EVENT_NOT_ELIGIBLE
+            );
+            throw failure;
+        } catch (PaymentOutboxRecoveryCommandConflictException failure) {
+            recordRejection(
+                    eventId,
+                    PaymentOutboxRecoveryRejectionCode.COMMAND_CONFLICT
+            );
+            throw failure;
+        }
+    }
+
+    private void recordRejection(
+            Long eventId,
+            PaymentOutboxRecoveryRejectionCode rejectionCode
+    ) {
+        try {
+            rejectionAuditTransaction.record(eventId, rejectionCode);
+        } catch (PaymentOutboxRecoveryRejectionAuditUnavailableException failure) {
+            throw failure;
+        } catch (RuntimeException failure) {
+            throw new PaymentOutboxRecoveryRejectionAuditUnavailableException(failure);
+        }
+    }
+
+    private PaymentOutboxRecoveryAudit attemptRecovery(
+            Long eventId,
+            String recoveryKeyHash,
+            String actor,
+            String reason
+    ) {
         PaymentOutboxRecoveryAudit existing = auditRepository
                 .findByRecoveryKeyHash(recoveryKeyHash)
                 .orElse(null);
         if (existing != null) {
-            return requireMatching(existing, eventId, normalizedActor, normalizedReason);
+            return requireMatching(existing, eventId, actor, reason);
         }
 
         try {
             return recoveryTransaction.requeueExhausted(
                     eventId,
                     recoveryKeyHash,
-                    normalizedActor,
-                    normalizedReason
+                    actor,
+                    reason
             );
         } catch (DataIntegrityViolationException failure) {
             PaymentOutboxRecoveryAudit raced = auditRepository
                     .findByRecoveryKeyHash(recoveryKeyHash)
                     .orElseThrow(() -> failure);
-            return requireMatching(raced, eventId, normalizedActor, normalizedReason);
+            return requireMatching(raced, eventId, actor, reason);
         }
     }
 
