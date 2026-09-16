@@ -16,10 +16,16 @@ import java.util.Objects;
 @Entity
 @Table(
         name = "payment_outbox_recovery_rejection_audit",
-        indexes = @Index(
-                name = "idx_payment_outbox_rejection_event_time",
-                columnList = "requested_event_id,rejected_at"
-        )
+        indexes = {
+                @Index(
+                        name = "idx_payment_outbox_rejection_event_time",
+                        columnList = "requested_event_id,rejected_at"
+                ),
+                @Index(
+                        name = "idx_payment_outbox_rejection_retention",
+                        columnList = "rejected_at,id"
+                )
+        }
 )
 public class PaymentOutboxRecoveryRejectionAudit {
     @Id

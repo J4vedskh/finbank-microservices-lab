@@ -30,5 +30,11 @@ payment:
     max-attempts: 5
     send-timeout-ms: 5000
     batch-size: 20
+    retention:
+      enabled: false
+      published-retention-days: 30
+      rejection-retention-days: 30
+      batch-size: 100
+      cleanup-delay-ms: 86400000
 server:
   port: 8082

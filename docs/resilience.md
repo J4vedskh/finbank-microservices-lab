@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, and supports an audited command plus minimal business-rejection journal. | Add dead-letter routing, retention, and MySQL qualification. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, supports an audited command plus minimal business-rejection journal, and has opt-in bounded retention for old published data. | Add dead-letter routing and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -82,8 +82,8 @@ service sent directly after committing the payment.
 Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
-without a second ledger row. The relay retains all outbox rows; dead-letter
-routing and retention remain future work.
+without a second ledger row. The relay retains all outbox rows while the
+opt-in retention job is disabled. Dead-letter routing remains future work.
 
 ## Bounded Outbox Retry
 
@@ -148,8 +148,8 @@ clear-HTTP connector. Proxy-only TLS termination and forwarded-scheme trust are
 not supported yet.
 Network exposure and TLS material remain deployment responsibilities. External
 identity integration is not provided yet. Immutability is not a database
-permission boundary, and dead-letter routing, retention, and MySQL persistence
-and locking qualification remain pending.
+permission boundary, and dead-letter routing plus MySQL persistence, locking,
+and retention qualification remain pending.
 
 ### Minimal Business-Rejection Journal
 
@@ -168,6 +168,39 @@ insecure-request, and unexpected infrastructure failures are outside this
 business journal. If a known rejection cannot be journaled, the service returns
 a generic `503 Service Unavailable` instead of disclosing the original `404` or
 `409`; the rejected attempt commits no recovery state change.
+
+## Bounded Outbox Retention
+
+Retention is disabled by default because deleting audit history is an explicit
+operational policy choice. When enabled, one scheduled run locks at most the
+configured batch size of outbox rows in `PUBLISHED` state whose `publishedAt`
+timestamp is strictly older than the configured cutoff. Pending, retrying, and
+publication-exhausted work all remains in the nonterminal `PENDING` state and
+never qualifies. The associated payment record is also preserved.
+
+Successful recovery audits have a foreign key to their outbox event. The job
+therefore deletes all successful recovery audits for a claimed published event
+before deleting that event, in the same transaction. A parent-delete failure
+rolls the audit deletion back. Minimal business-rejection audits have no event
+foreign key, so the job locks and removes a separate batch based on
+`rejectedAt`. Exact recovery-command replay history is available only while its
+successful audit is retained.
+
+| Property | Default | Purpose |
+| --- | ---: | --- |
+| `payment.outbox.retention.enabled` | `false` | Explicitly activates destructive cleanup |
+| `payment.outbox.retention.published-retention-days` | 30 | Age required for a published event and its successful recovery history |
+| `payment.outbox.retention.rejection-retention-days` | 30 | Age required for a minimal rejection-journal row |
+| `payment.outbox.retention.batch-size` | 100 | Maximum published-event candidates and rejection rows claimed per run |
+| `payment.outbox.retention.cleanup-delay-ms` | 86400000 | Delay between completed cleanup runs |
+
+Retention controls local storage only. Kafka acknowledgement does not prove
+that every consumer completed, and cleanup does not change at-least-once
+delivery or provide dead-letter routing. The H2 persistence suite proves strict
+cutoff handling, foreign-key-safe deletion, transaction rollback, batch caps,
+payment preservation, and protection of nonterminal rows. MySQL locking and
+schema-migration qualification remain separate work; relying on
+`ddl-auto=update` is not a production migration strategy.
 
 ## Failure States
 
@@ -190,5 +223,6 @@ a generic `503 Service Unavailable` instead of disclosing the original `404` or
 - [x] Add an internal locked, audited, idempotent recovery command for exhausted events.
 - [x] Add a fail-closed HTTP Basic operator adapter with principal-derived audit identity.
 - [x] Journal known business rejections without sensitive request or identity data.
-- Add trusted-proxy and external identity support, dead-letter routing, retention, and MySQL qualification.
+- [x] Add opt-in bounded retention for old published outbox and recovery-audit data.
+- Add trusted-proxy and external identity support, dead-letter routing, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.
