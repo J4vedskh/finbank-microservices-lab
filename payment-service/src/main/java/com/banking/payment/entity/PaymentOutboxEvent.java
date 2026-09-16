@@ -25,10 +25,16 @@ import java.time.Instant;
                 name = "uk_payment_outbox_payment_id",
                 columnNames = "payment_id"
         ),
-        indexes = @Index(
-                name = "idx_payment_outbox_due",
-                columnList = "status,exhausted_at,next_attempt_at,created_at"
-        )
+        indexes = {
+                @Index(
+                        name = "idx_payment_outbox_due",
+                        columnList = "status,exhausted_at,next_attempt_at,created_at"
+                ),
+                @Index(
+                        name = "idx_payment_outbox_retention",
+                        columnList = "status,published_at,id"
+                )
+        }
 )
 public class PaymentOutboxEvent {
     @Id

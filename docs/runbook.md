@@ -68,6 +68,34 @@ aligning it to `/actuator/prometheus` remains pending until platform work is
 released. Both paths stay allowlisted so this security change does not further
 restrict the existing scraper.
 
+## Outbox Retention
+
+Published outbox and recovery-journal cleanup is disabled by default. Before
+enabling it, choose retention periods that satisfy the audit and incident
+investigation policy. The equivalent environment settings are:
+
+```text
+PAYMENT_OUTBOX_RETENTION_ENABLED=true
+PAYMENT_OUTBOX_RETENTION_PUBLISHED_RETENTION_DAYS=30
+PAYMENT_OUTBOX_RETENTION_REJECTION_RETENTION_DAYS=30
+PAYMENT_OUTBOX_RETENTION_BATCH_SIZE=100
+PAYMENT_OUTBOX_RETENTION_CLEANUP_DELAY_MS=86400000
+```
+
+The service accepts retention periods from `1..36500` days and batch sizes from
+`1..1000`, and rejects cleanup delays below one second at startup. Each run
+claims at most one configured batch of strictly old `PUBLISHED` events and one
+batch of old rejection rows. It does not delete payments, pending retries, or
+exhausted events; all of those event categories remain in nonterminal
+`PENDING` state. Enabling retention permanently removes eligible local event
+payloads and recovery history; it does not confirm downstream consumer
+completion.
+
+The repository currently validates cleanup behavior with H2. Qualify lock
+contention and index creation against the target MySQL version, and manage the
+two retention indexes through a reviewed schema migration, before treating the
+job as production-ready.
+
 ## Local Infrastructure
 
 ```bash

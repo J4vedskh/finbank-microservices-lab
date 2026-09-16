@@ -58,8 +58,16 @@ the configured operator only through an enabled HTTPS connector and supplies
 its principal name as the successful-command audit actor. Known business
 rejections commit a separate minimal journal containing only requested event id,
 fixed code, and server time. Trusted-proxy and external identity support,
-dead-letter routing, outbox retention, and MySQL qualification remain tracked in the
+dead-letter routing, and MySQL lock and retention qualification remain tracked in the
 [resilience guide](resilience.md).
+
+An opt-in maintenance job bounds payment-database growth without changing the
+relay path. It locks a limited set of strictly old `PUBLISHED` outbox rows,
+deletes any successful recovery audits that reference them, then deletes the
+events in one transaction while preserving the payment records. A separate
+limited batch removes old minimal rejection-journal rows. Pending, retrying,
+and publication-exhausted events all remain nonterminal `PENDING` rows and
+never qualify.
 
 ## Deployment Topology
 

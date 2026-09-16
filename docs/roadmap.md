@@ -36,10 +36,11 @@ gantt
 | 9 | Completed: add a fail-closed HTTP Basic operator recovery adapter |
 | 10 | Completed: journal business-level recovery rejections without sensitive request data |
 | 11 | Add trusted-proxy and external identity integration |
-| 12 | Add dead-letter routing, outbox retention, and MySQL recovery-lock qualification |
-| 13 | Add Swagger UI and expand OpenAPI documentation |
-| 14 | Add health probes and resource limits to Kubernetes manifests |
-| 15 | Add Prometheus dashboard documentation and screenshots |
+| 12 | Completed: add opt-in bounded retention for published outbox and recovery-audit data |
+| 13 | Add dead-letter routing and MySQL recovery-lock and retention qualification |
+| 14 | Add Swagger UI and expand OpenAPI documentation |
+| 15 | Add health probes and resource limits to Kubernetes manifests |
+| 16 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 
