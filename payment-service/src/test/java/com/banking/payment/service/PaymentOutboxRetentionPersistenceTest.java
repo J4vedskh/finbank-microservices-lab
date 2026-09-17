@@ -1,10 +1,12 @@
 package com.banking.payment.service;
 
 import com.banking.payment.entity.Payment;
+import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.entity.PaymentOutboxRecoveryRejectionAudit;
 import com.banking.payment.entity.PaymentOutboxRecoveryRejectionCode;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
@@ -42,6 +44,9 @@ class PaymentOutboxRetentionPersistenceTest {
     private PaymentOutboxRepository outboxRepository;
 
     @Autowired
+    private PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
+
+    @Autowired
     private PaymentOutboxRecoveryAuditRepository recoveryAuditRepository;
 
     @Autowired
@@ -55,6 +60,7 @@ class PaymentOutboxRetentionPersistenceTest {
     @AfterEach
     void clearCommittedFixtures() {
         jdbcTemplate.execute("drop table if exists retention_delete_blocker");
+        deadLetterHandoffRepository.deleteAllInBatch();
         rejectionAuditRepository.deleteAllInBatch();
         recoveryAuditRepository.deleteAllInBatch();
         outboxRepository.deleteAllInBatch();
@@ -64,12 +70,16 @@ class PaymentOutboxRetentionPersistenceTest {
     @Test
     void purgeExpired_removesOnlyStrictlyOldPublishedDataAndKeepsPayments() {
         PaymentOutboxEvent oldPublished = persistPublished(CUTOFF.minusSeconds(1));
+        PaymentOutboxDeadLetterHandoff oldHandoff = onlyHandoff(oldPublished);
         Long retainedPaymentId = oldPublished.getPayment().getId();
         PaymentOutboxEvent boundaryPublished = persistPublished(CUTOFF);
+        PaymentOutboxDeadLetterHandoff boundaryHandoff = onlyHandoff(boundaryPublished);
         PaymentOutboxEvent recentPublished = persistPublished(CUTOFF.plusSeconds(1));
         PaymentOutboxEvent active = persistPending();
         PaymentOutboxEvent retrying = persistRetrying();
         PaymentOutboxEvent exhausted = persistExhausted();
+        PaymentOutboxDeadLetterHandoff exhaustedHandoff = deadLetterHandoffRepository
+                .saveAndFlush(new PaymentOutboxDeadLetterHandoff(exhausted));
         PaymentOutboxRecoveryAudit oldRecovery = persistRecoveryAudit(oldPublished);
         PaymentOutboxRecoveryAudit boundaryRecovery = persistRecoveryAudit(boundaryPublished);
         PaymentOutboxRecoveryRejectionAudit oldRejection =
@@ -85,16 +95,19 @@ class PaymentOutboxRetentionPersistenceTest {
                 100
         );
 
-        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(1, 1, 1));
+        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(1, 1, 1, 1));
         assertThat(outboxRepository.findById(oldPublished.getId())).isEmpty();
+        assertThat(deadLetterHandoffRepository.findById(oldHandoff.getId())).isEmpty();
         assertThat(recoveryAuditRepository.findById(oldRecovery.getId())).isEmpty();
         assertThat(paymentRepository.findById(retainedPaymentId)).isPresent();
         assertThat(outboxRepository.findById(boundaryPublished.getId())).isPresent();
         assertThat(outboxRepository.findById(recentPublished.getId())).isPresent();
         assertThat(recoveryAuditRepository.findById(boundaryRecovery.getId())).isPresent();
+        assertThat(deadLetterHandoffRepository.findById(boundaryHandoff.getId())).isPresent();
         assertThat(outboxRepository.findById(active.getId())).isPresent();
         assertThat(outboxRepository.findById(retrying.getId())).isPresent();
         assertThat(outboxRepository.findById(exhausted.getId())).isPresent();
+        assertThat(deadLetterHandoffRepository.findById(exhaustedHandoff.getId())).isPresent();
         assertThat(rejectionAuditRepository.findById(oldRejection.getId())).isEmpty();
         assertThat(rejectionAuditRepository.findById(boundaryRejection.getId())).isPresent();
         assertThat(rejectionAuditRepository.findById(recentRejection.getId())).isPresent();
@@ -118,7 +131,7 @@ class PaymentOutboxRetentionPersistenceTest {
                 2
         );
 
-        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(2, 0, 2));
+        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(2, 0, 2, 2));
         assertThat(outboxRepository.findById(oldestEvent.getId())).isEmpty();
         assertThat(outboxRepository.findById(middleEvent.getId())).isEmpty();
         assertThat(outboxRepository.findById(newestEvent.getId())).isPresent();
@@ -130,6 +143,7 @@ class PaymentOutboxRetentionPersistenceTest {
     @Test
     void purgeExpired_parentDeleteFailureRollsBackSuccessfulAuditDelete() {
         PaymentOutboxEvent oldPublished = persistPublished(CUTOFF.minusSeconds(1));
+        PaymentOutboxDeadLetterHandoff deadLetterHandoff = onlyHandoff(oldPublished);
         PaymentOutboxRecoveryAudit recoveryAudit = persistRecoveryAudit(oldPublished);
         jdbcTemplate.execute("""
                 create table retention_delete_blocker (
@@ -153,11 +167,25 @@ class PaymentOutboxRetentionPersistenceTest {
 
         assertThat(outboxRepository.findById(oldPublished.getId())).isPresent();
         assertThat(recoveryAuditRepository.findById(recoveryAudit.getId())).isPresent();
+        assertThat(deadLetterHandoffRepository.findById(deadLetterHandoff.getId()))
+                .isPresent();
     }
 
     private PaymentOutboxEvent persistPublished(Instant publishedAt) {
-        PaymentOutboxEvent event = newEvent("PUBLISHED");
+        PaymentOutboxEvent event = newEvent("PUBLISH_EXHAUSTED");
+        event.markExhausted(
+                publishedAt.minus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MICROS),
+                "TimeoutException"
+        );
+        event = outboxRepository.saveAndFlush(event);
+        deadLetterHandoffRepository.saveAndFlush(
+                new PaymentOutboxDeadLetterHandoff(event)
+        );
         event.markPublished(publishedAt.truncatedTo(ChronoUnit.MICROS));
+        Payment payment = paymentRepository.findById(event.getPayment().getId())
+                .orElseThrow();
+        payment.setStatus("PUBLISHED");
+        paymentRepository.saveAndFlush(payment);
         return outboxRepository.saveAndFlush(event);
     }
 
@@ -224,5 +252,10 @@ class PaymentOutboxRetentionPersistenceTest {
                         rejectedAt.truncatedTo(ChronoUnit.MICROS)
                 )
         );
+    }
+
+    private PaymentOutboxDeadLetterHandoff onlyHandoff(PaymentOutboxEvent event) {
+        return deadLetterHandoffRepository.findByOutboxEventId(event.getId())
+                .get(0);
     }
 }

@@ -47,6 +47,7 @@ class PaymentOutboxRecoveryTransactionTest {
         String payload = event.getPayload();
         Instant previousExhaustedAt = event.getExhaustedAt();
         int previousAttemptCount = event.getAttemptCount();
+        int previousExhaustionSequence = event.getExhaustionSequence();
         String previousLastError = event.getLastError();
         when(paymentOutboxRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(event));
         when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
@@ -59,6 +60,7 @@ class PaymentOutboxRecoveryTransactionTest {
 
         assertThat(event.getStatus()).isEqualTo(PaymentOutboxStatus.PENDING);
         assertThat(event.getAttemptCount()).isZero();
+        assertThat(event.getExhaustionSequence()).isEqualTo(previousExhaustionSequence);
         assertThat(event.getExhaustedAt()).isNull();
         assertThat(event.getNextAttemptAt()).isEqualTo(NOW);
         assertThat(event.getPublishedAt()).isNull();

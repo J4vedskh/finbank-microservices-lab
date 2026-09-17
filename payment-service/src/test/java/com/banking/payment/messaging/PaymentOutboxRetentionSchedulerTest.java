@@ -14,7 +14,7 @@ class PaymentOutboxRetentionSchedulerTest {
     @Test
     void purgeExpired_delegatesExactlyOneBoundedRun() {
         PaymentOutboxRetentionService service = mock(PaymentOutboxRetentionService.class);
-        when(service.runOnce()).thenReturn(new PaymentOutboxRetentionResult(1, 2, 3));
+        when(service.runOnce()).thenReturn(new PaymentOutboxRetentionResult(1, 2, 3, 4));
         PaymentOutboxRetentionScheduler scheduler =
                 new PaymentOutboxRetentionScheduler(service);
 

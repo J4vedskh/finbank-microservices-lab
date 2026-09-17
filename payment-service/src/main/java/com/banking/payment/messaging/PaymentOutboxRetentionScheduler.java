@@ -33,9 +33,11 @@ public class PaymentOutboxRetentionScheduler {
         if (result.totalDeleted() > 0) {
             LOGGER.info(
                     "Outbox retention deleted {} published events, "
-                            + "{} recovery audits, and {} rejection audits",
+                            + "{} recovery audits, {} dead-letter handoffs, "
+                            + "and {} rejection audits",
                     result.publishedEventsDeleted(),
                     result.recoveryAuditsDeleted(),
+                    result.deadLetterHandoffsDeleted(),
                     result.rejectionAuditsDeleted()
             );
         }

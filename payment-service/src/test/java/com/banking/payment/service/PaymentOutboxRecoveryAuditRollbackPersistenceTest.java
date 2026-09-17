@@ -49,6 +49,7 @@ class PaymentOutboxRecoveryAuditRollbackPersistenceTest {
         Long paymentId = event.getPayment().getId();
         Instant exhaustedAt = event.getExhaustedAt();
         int attemptCount = event.getAttemptCount();
+        int exhaustionSequence = event.getExhaustionSequence();
         when(auditRepository.findByRecoveryKeyHash(COMMAND_KEY_HASH))
                 .thenReturn(Optional.empty());
         when(auditRepository.saveAndFlush(any()))
@@ -63,6 +64,7 @@ class PaymentOutboxRecoveryAuditRollbackPersistenceTest {
 
         PaymentOutboxEvent unchanged = paymentOutboxRepository.findById(eventId).orElseThrow();
         assertThat(unchanged.getAttemptCount()).isEqualTo(attemptCount);
+        assertThat(unchanged.getExhaustionSequence()).isEqualTo(exhaustionSequence);
         assertThat(unchanged.getExhaustedAt()).isEqualTo(exhaustedAt);
         assertThat(unchanged.getLastError()).isEqualTo("TimeoutException");
         assertThat(paymentRepository.findById(paymentId))

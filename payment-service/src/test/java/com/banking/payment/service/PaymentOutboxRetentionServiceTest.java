@@ -22,7 +22,7 @@ class PaymentOutboxRetentionServiceTest {
         PaymentOutboxRetentionProperties properties =
                 new PaymentOutboxRetentionProperties(false, 30, 10, 25, 60_000);
         PaymentOutboxRetentionResult expected =
-                new PaymentOutboxRetentionResult(2, 3, 4);
+                new PaymentOutboxRetentionResult(2, 3, 4, 5);
         when(transaction.purgeExpired(
                 Instant.parse("2026-08-17T05:30:00Z"),
                 Instant.parse("2026-09-06T05:30:00Z"),

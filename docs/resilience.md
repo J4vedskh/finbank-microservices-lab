@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, supports an audited command plus minimal business-rejection journal, and has opt-in bounded retention for old published data. | Add dead-letter routing and MySQL qualification. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, atomically stages a local dead-letter handoff, supports audited recovery, and has opt-in bounded retention. | Add restricted handoff inspection, independently available delivery, and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -83,7 +83,8 @@ Publication remains at least once. A timeout, or a crash after broker
 acknowledgement but before the outbox status commit, can cause a duplicate send.
 The transaction service's payment-id uniqueness accepts identical redelivery
 without a second ledger row. The relay retains all outbox rows while the
-opt-in retention job is disabled. Dead-letter routing remains future work.
+opt-in retention job is disabled. Local dead-letter staging is implemented;
+external delivery remains future work.
 
 ## Bounded Outbox Retry
 
@@ -105,8 +106,31 @@ the payment moves to `PUBLISH_EXHAUSTED`, and the row is excluded from normal
 polling. This means the relay exhausted its policy; it does not prove Kafka never
 accepted the event because a timeout can be ambiguous. The stored error is only
 the exception type so broker messages do not leak secrets. The restricted
-operator adapter can re-arm an exhausted event, while dead-letter handling is
-still required.
+operator adapter can re-arm an exhausted event.
+
+## Durable Local Dead-Letter Handoff
+
+Every committed transition to terminal publication exhaustion appends one
+immutable handoff row in the same transaction as the exhausted outbox and
+payment states. The handoff references the retained source event and snapshots
+only its monotonically increasing exhaustion sequence, exhaustion time, final
+attempt count, and safe exception type. It does not duplicate the topic, key,
+payload, payment details, account data, or exception message. A database unique
+constraint on event and exhaustion sequence prevents duplicate staging of one
+terminal cycle.
+
+If handoff persistence fails, the terminal outbox and payment state roll back
+with it. The attempted Kafka send cannot be undone, so a later retry may still
+duplicate a delivery; the transaction service's payment-id uniqueness remains
+the downstream protection. Recovery keeps earlier handoffs as immutable
+incident history. If a recovered event exhausts again, the source sequence
+increments and a second handoff is appended.
+
+This is local durable staging, not a Kafka DLT send or an external delivery
+receipt. Sending to the same unavailable Kafka cluster would share the original
+failure dependency. A future relay must use an independently qualified
+destination, persist its own acknowledgement state, and receive end-to-end
+broker testing after platform work is released.
 
 ## Internal Audited, Idempotent Recovery Command
 
@@ -148,8 +172,8 @@ clear-HTTP connector. Proxy-only TLS termination and forwarded-scheme trust are
 not supported yet.
 Network exposure and TLS material remain deployment responsibilities. External
 identity integration is not provided yet. Immutability is not a database
-permission boundary, and dead-letter routing plus MySQL persistence, locking,
-and retention qualification remain pending.
+permission boundary, and external dead-letter delivery plus MySQL persistence,
+locking, and retention qualification remain pending.
 
 ### Minimal Business-Rejection Journal
 
@@ -179,17 +203,18 @@ publication-exhausted work all remains in the nonterminal `PENDING` state and
 never qualifies. The associated payment record is also preserved.
 
 Successful recovery audits have a foreign key to their outbox event. The job
-therefore deletes all successful recovery audits for a claimed published event
-before deleting that event, in the same transaction. A parent-delete failure
-rolls the audit deletion back. Minimal business-rejection audits have no event
-foreign key, so the job locks and removes a separate batch based on
-`rejectedAt`. Exact recovery-command replay history is available only while its
-successful audit is retained.
+therefore deletes all successful recovery audits and local dead-letter handoffs
+for a claimed published event before deleting that event, in the same
+transaction. A parent-delete failure rolls both child deletions back. Minimal
+business-rejection audits have no event foreign key, so the job locks and
+removes a separate batch based on `rejectedAt`. Exact recovery-command replay
+history and dead-letter cycle history are available only while their published
+source event is retained.
 
 | Property | Default | Purpose |
 | --- | ---: | --- |
 | `payment.outbox.retention.enabled` | `false` | Explicitly activates destructive cleanup |
-| `payment.outbox.retention.published-retention-days` | 30 | Age required for a published event and its successful recovery history |
+| `payment.outbox.retention.published-retention-days` | 30 | Age required for a published event and its recovery and dead-letter history |
 | `payment.outbox.retention.rejection-retention-days` | 30 | Age required for a minimal rejection-journal row |
 | `payment.outbox.retention.batch-size` | 100 | Maximum published-event candidates and rejection rows claimed per run |
 | `payment.outbox.retention.cleanup-delay-ms` | 86400000 | Delay between completed cleanup runs |
@@ -210,7 +235,7 @@ schema-migration qualification remain separate work; relying on
 | `PUBLISHED` | Payment event was acknowledged by Kafka. | Confirm consumer lag remains low. |
 | `COMPLETED` | Ledger entry was written successfully. | No action required. |
 | `PENDING_RETRY` | A retryable dependency failed. | Review retry queue and dependency health. |
-| `PUBLISH_EXHAUSTED` | The outbox exhausted its publication attempts; delivery may still be unknown. | Inspect Kafka and ledger state before issuing the internal recovery command. |
+| `PUBLISH_EXHAUSTED` | The outbox exhausted its publication attempts, and a local dead-letter handoff was staged; delivery may still be unknown. | Inspect the handoff, Kafka, and ledger state before issuing the internal recovery command. |
 
 ## Implementation Checklist
 
@@ -224,5 +249,6 @@ schema-migration qualification remain separate work; relying on
 - [x] Add a fail-closed HTTP Basic operator adapter with principal-derived audit identity.
 - [x] Journal known business rejections without sensitive request or identity data.
 - [x] Add opt-in bounded retention for old published outbox and recovery-audit data.
-- Add trusted-proxy and external identity support, dead-letter routing, and MySQL qualification.
+- [x] Add an atomic, payload-free local dead-letter handoff for terminal publication cycles.
+- Add trusted-proxy and external identity support, restricted handoff inspection, independently available delivery, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

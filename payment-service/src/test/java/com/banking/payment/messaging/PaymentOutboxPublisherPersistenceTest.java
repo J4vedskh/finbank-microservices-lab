@@ -1,8 +1,10 @@
 package com.banking.payment.messaging;
 
 import com.banking.payment.entity.Payment;
+import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import com.banking.payment.repository.PaymentRepository;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.test.context.TestPropertySource;
@@ -20,6 +23,10 @@ import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @DataJpaTest
@@ -40,6 +47,9 @@ class PaymentOutboxPublisherPersistenceTest {
 
     @Autowired
     private PaymentOutboxRepository paymentOutboxRepository;
+
+    @Autowired
+    private PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
 
     @Autowired
     private TestEntityManager entityManager;
@@ -66,6 +76,7 @@ class PaymentOutboxPublisherPersistenceTest {
                     assertThat(persisted.getLastError()).isNull();
                     assertThat(persisted.getPayment().getStatus()).isEqualTo("PUBLISHED");
                 });
+        assertThat(deadLetterHandoffRepository.count()).isZero();
     }
 
     @Test
@@ -89,6 +100,7 @@ class PaymentOutboxPublisherPersistenceTest {
                     assertThat(persisted.getLastError()).isEqualTo("IllegalStateException");
                     assertThat(persisted.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
                 });
+        assertThat(deadLetterHandoffRepository.count()).isZero();
     }
 
     @Test
@@ -117,6 +129,61 @@ class PaymentOutboxPublisherPersistenceTest {
                             .isEqualTo("PUBLISH_EXHAUSTED");
                 });
         assertThat(publisher.publishNext()).isFalse();
+        assertThat(deadLetterHandoffRepository.findByOutboxEventId(event.getId()))
+                .singleElement()
+                .satisfies(handoff -> {
+                    assertThat(handoff.getOutboxEvent().getId()).isEqualTo(event.getId());
+                    assertThat(handoff.getExhaustionSequence()).isEqualTo(1);
+                    assertThat(handoff.getAttemptCount()).isEqualTo(3);
+                    assertThat(handoff.getExhaustedAt()).isNotNull();
+                    assertThat(handoff.getFailureType())
+                            .isEqualTo("IllegalStateException");
+                });
+    }
+
+    @Test
+    void publishNext_alreadyAtAttemptLimitPersistsHandoffWithoutKafkaSend() {
+        PaymentOutboxEvent event = persistPendingEvent();
+        event.scheduleRetry(Instant.now().minusSeconds(3), "Failure1");
+        event.scheduleRetry(Instant.now().minusSeconds(2), "Failure2");
+        event.scheduleRetry(Instant.now().minusSeconds(1), "Failure3");
+        paymentOutboxRepository.saveAndFlush(event);
+
+        assertThat(publisher.publishNext()).isTrue();
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(paymentOutboxRepository.findById(event.getId()))
+                .hasValueSatisfying(persisted -> {
+                    assertThat(persisted.getAttemptCount()).isEqualTo(3);
+                    assertThat(persisted.getExhaustionSequence()).isEqualTo(1);
+                    assertThat(persisted.getExhaustedAt()).isNotNull();
+                    assertThat(persisted.getLastError()).isEqualTo("Failure3");
+                    assertThat(persisted.getPayment().getStatus())
+                            .isEqualTo("PUBLISH_EXHAUSTED");
+                });
+        assertThat(deadLetterHandoffRepository.findByOutboxEventId(event.getId()))
+                .singleElement()
+                .satisfies(handoff -> {
+                    assertThat(handoff.getExhaustionSequence()).isEqualTo(1);
+                    assertThat(handoff.getAttemptCount()).isEqualTo(3);
+                    assertThat(handoff.getFailureType()).isEqualTo("Failure3");
+                });
+        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void deadLetterHandoff_duplicateExhaustionCycleIsRejectedByDatabase() {
+        PaymentOutboxEvent event = persistPendingEvent();
+        event.markExhausted(Instant.now(), "TimeoutException");
+        paymentOutboxRepository.saveAndFlush(event);
+        deadLetterHandoffRepository.saveAndFlush(
+                new PaymentOutboxDeadLetterHandoff(event)
+        );
+
+        assertThatThrownBy(() -> deadLetterHandoffRepository.saveAndFlush(
+                new PaymentOutboxDeadLetterHandoff(event)
+        )).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private PaymentOutboxEvent persistPendingEvent() {
