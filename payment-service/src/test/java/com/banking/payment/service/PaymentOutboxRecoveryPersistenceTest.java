@@ -1,10 +1,12 @@
 package com.banking.payment.service;
 
 import com.banking.payment.entity.Payment;
+import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.entity.PaymentOutboxStatus;
 import com.banking.payment.messaging.PaymentOutboxPublisher;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
@@ -16,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,11 +71,15 @@ class PaymentOutboxRecoveryPersistenceTest {
     @Autowired
     private PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository;
 
+    @Autowired
+    private PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
+
     @MockBean
     private KafkaTemplate<String, String> kafkaTemplate;
 
     @AfterEach
     void clearCommittedFixtures() {
+        deadLetterHandoffRepository.deleteAllInBatch();
         rejectionAuditRepository.deleteAllInBatch();
         auditRepository.deleteAllInBatch();
         paymentOutboxRepository.deleteAllInBatch();
@@ -163,6 +170,72 @@ class PaymentOutboxRecoveryPersistenceTest {
         assertThat(auditRepository.count()).isEqualTo(1);
         assertThat(rejectionAuditRepository.count()).isZero();
         verify(kafkaTemplate).send(event.getTopic(), event.getEventKey(), event.getPayload());
+    }
+
+    @Test
+    void requeueThenLaterExhaustion_preservesBothDeadLetterHandoffCycles() {
+        PaymentOutboxEvent event = persistExhaustedEvent("d".repeat(64));
+        Long paymentId = event.getPayment().getId();
+        PaymentOutboxDeadLetterHandoff firstHandoff = deadLetterHandoffRepository
+                .saveAndFlush(new PaymentOutboxDeadLetterHandoff(event));
+
+        recoveryService.requeueExhausted(event.getId(), COMMAND_KEY, ACTOR, REASON);
+        PaymentOutboxEvent recovered = paymentOutboxRepository.findById(event.getId())
+                .orElseThrow();
+        Instant dueAt = Instant.now().minusSeconds(10).truncatedTo(ChronoUnit.MICROS);
+        recovered.scheduleRetry(dueAt.plusSeconds(1), "Failure1");
+        recovered.scheduleRetry(dueAt.plusSeconds(2), "Failure2");
+        recovered.scheduleRetry(dueAt.plusSeconds(3), "Failure3");
+        recovered.scheduleRetry(dueAt.plusSeconds(4), "Failure4");
+        paymentOutboxRepository.saveAndFlush(recovered);
+        Payment payment = paymentRepository.findById(paymentId).orElseThrow();
+        payment.setStatus("PENDING_RETRY");
+        paymentRepository.saveAndFlush(payment);
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(
+                new IllegalStateException("secret broker failure detail")
+        );
+        when(kafkaTemplate.send(
+                recovered.getTopic(),
+                recovered.getEventKey(),
+                recovered.getPayload()
+        )).thenReturn(failed);
+
+        assertThat(publisher.publishNext()).isTrue();
+
+        assertThat(deadLetterHandoffRepository.findByOutboxEventId(event.getId()))
+                .satisfiesExactly(
+                        first -> {
+                            assertThat(first.getId()).isEqualTo(firstHandoff.getId());
+                            assertThat(first.getExhaustionSequence()).isEqualTo(1);
+                            assertThat(first.getAttemptCount()).isEqualTo(5);
+                            assertThat(first.getFailureType()).isEqualTo("TimeoutException");
+                        },
+                        second -> {
+                            assertThat(second.getExhaustionSequence()).isEqualTo(2);
+                            assertThat(second.getAttemptCount()).isEqualTo(5);
+                            assertThat(second.getFailureType())
+                                    .isEqualTo("IllegalStateException")
+                                    .doesNotContain("secret broker failure detail");
+                            assertThat(second.getExhaustedAt())
+                                    .isAfter(firstHandoff.getExhaustedAt());
+                        }
+                );
+        assertThat(auditRepository.count()).isEqualTo(1);
+        assertThat(paymentOutboxRepository.findById(event.getId()))
+                .hasValueSatisfying(exhausted -> {
+                    assertThat(exhausted.getExhaustionSequence()).isEqualTo(2);
+                    assertThat(exhausted.getExhaustedAt()).isNotNull();
+                });
+        assertThat(paymentRepository.findById(paymentId))
+                .hasValueSatisfying(exhaustedPayment ->
+                        assertThat(exhaustedPayment.getStatus())
+                                .isEqualTo("PUBLISH_EXHAUSTED"));
+        verify(kafkaTemplate).send(
+                recovered.getTopic(),
+                recovered.getEventKey(),
+                recovered.getPayload()
+        );
     }
 
     private PaymentOutboxEvent persistExhaustedEvent(String paymentKeyHash) {

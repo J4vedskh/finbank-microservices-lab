@@ -1,7 +1,9 @@
 package com.banking.payment.messaging;
 
+import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +22,7 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class PaymentOutboxPublisher {
     private final PaymentOutboxRepository paymentOutboxRepository;
+    private final PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final long sendTimeoutMs;
     private final long retryDelayMs;
@@ -30,6 +33,7 @@ public class PaymentOutboxPublisher {
     @Autowired
     public PaymentOutboxPublisher(
             PaymentOutboxRepository paymentOutboxRepository,
+            PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository,
             KafkaTemplate<String, String> kafkaTemplate,
             @Value("${payment.outbox.send-timeout-ms:5000}") long sendTimeoutMs,
             @Value("${payment.outbox.retry-delay-ms:5000}") long retryDelayMs,
@@ -38,6 +42,7 @@ public class PaymentOutboxPublisher {
     ) {
         this(
                 paymentOutboxRepository,
+                deadLetterHandoffRepository,
                 kafkaTemplate,
                 sendTimeoutMs,
                 retryDelayMs,
@@ -49,6 +54,7 @@ public class PaymentOutboxPublisher {
 
     PaymentOutboxPublisher(
             PaymentOutboxRepository paymentOutboxRepository,
+            PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository,
             KafkaTemplate<String, String> kafkaTemplate,
             long sendTimeoutMs,
             long retryDelayMs,
@@ -58,6 +64,7 @@ public class PaymentOutboxPublisher {
     ) {
         validatePolicy(sendTimeoutMs, retryDelayMs, maxRetryDelayMs, maxAttempts);
         this.paymentOutboxRepository = paymentOutboxRepository;
+        this.deadLetterHandoffRepository = deadLetterHandoffRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.sendTimeoutMs = sendTimeoutMs;
         this.retryDelayMs = retryDelayMs;
@@ -82,6 +89,7 @@ public class PaymentOutboxPublisher {
         if (event.getAttemptCount() >= maxAttempts) {
             event.markExhaustedWithoutAttempt(clock.instant());
             event.getPayment().setStatus("PUBLISH_EXHAUSTED");
+            recordDeadLetterHandoff(event);
             return true;
         }
 
@@ -127,6 +135,7 @@ public class PaymentOutboxPublisher {
         if (failedAttempt >= maxAttempts) {
             event.markExhausted(failedAt, errorType);
             event.getPayment().setStatus("PUBLISH_EXHAUSTED");
+            recordDeadLetterHandoff(event);
             return;
         }
 
@@ -135,6 +144,12 @@ public class PaymentOutboxPublisher {
                 errorType
         );
         event.getPayment().setStatus("PENDING_RETRY");
+    }
+
+    private void recordDeadLetterHandoff(PaymentOutboxEvent event) {
+        deadLetterHandoffRepository.saveAndFlush(
+                new PaymentOutboxDeadLetterHandoff(event)
+        );
     }
 
     private long retryDelayFor(int failedAttempt) {

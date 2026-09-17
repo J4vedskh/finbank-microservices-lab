@@ -77,6 +77,9 @@ public class PaymentOutboxEvent {
     @Column(name = "exhausted_at")
     private Instant exhaustedAt;
 
+    @Column(name = "exhaustion_sequence", nullable = false)
+    private int exhaustionSequence;
+
     @Column(name = "last_error", length = 512)
     private String lastError;
 
@@ -123,6 +126,7 @@ public class PaymentOutboxEvent {
     public void markExhausted(Instant exhaustedAt, String errorType) {
         this.status = PaymentOutboxStatus.PENDING;
         this.attemptCount++;
+        this.exhaustionSequence++;
         this.publishedAt = null;
         this.exhaustedAt = exhaustedAt;
         this.lastError = errorType;
@@ -130,6 +134,7 @@ public class PaymentOutboxEvent {
 
     public void markExhaustedWithoutAttempt(Instant exhaustedAt) {
         this.status = PaymentOutboxStatus.PENDING;
+        this.exhaustionSequence++;
         this.publishedAt = null;
         this.exhaustedAt = exhaustedAt;
     }
@@ -184,6 +189,10 @@ public class PaymentOutboxEvent {
 
     public Instant getExhaustedAt() {
         return exhaustedAt;
+    }
+
+    public int getExhaustionSequence() {
+        return exhaustionSequence;
     }
 
     public String getLastError() {

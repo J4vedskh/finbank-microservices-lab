@@ -43,6 +43,8 @@ payment details returns HTTP `409 Conflict`.
 
 Payment status progresses through `CREATED`, `PENDING_RETRY`, `PUBLISHED`, or
 terminal `PUBLISH_EXHAUSTED` as the outbox relay attempts Kafka publication.
+Each committed terminal cycle also creates a local dead-letter handoff containing
+safe failure metadata; it does not publish to a Kafka DLT.
 
 Example request:
 

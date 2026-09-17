@@ -35,8 +35,10 @@ sequenceDiagram
         alt Broker acknowledgement
             Kafka-->>Relay: Acknowledged
             Relay->>DB: Mark event and payment PUBLISHED
-        else Publish failure or timeout
-            Relay->>DB: Schedule retry or mark publication exhausted
+        else Retryable publish failure or timeout
+            Relay->>DB: Schedule bounded retry
+        else Final publish failure or lowered attempt limit
+            Relay->>DB: Mark exhausted + append local dead-letter handoff
         end
     end
     Kafka-->>Ledger: Deliver payment event
@@ -58,16 +60,24 @@ the configured operator only through an enabled HTTPS connector and supplies
 its principal name as the successful-command audit actor. Known business
 rejections commit a separate minimal journal containing only requested event id,
 fixed code, and server time. Trusted-proxy and external identity support,
-dead-letter routing, and MySQL lock and retention qualification remain tracked in the
+external dead-letter delivery, and MySQL lock and retention qualification remain tracked in the
 [resilience guide](resilience.md).
+
+Each committed terminal publication cycle also appends an immutable local
+dead-letter handoff in the same database transaction. It points to the retained
+outbox event and snapshots only the exhaustion sequence, time, attempt count,
+and safe failure type; it does not duplicate the event payload. Recovery keeps
+the prior handoff as history, and a later terminal cycle appends a new one. This
+is durable local staging, not proof that a Kafka DLT or any external consumer
+received the event.
 
 An opt-in maintenance job bounds payment-database growth without changing the
 relay path. It locks a limited set of strictly old `PUBLISHED` outbox rows,
-deletes any successful recovery audits that reference them, then deletes the
-events in one transaction while preserving the payment records. A separate
-limited batch removes old minimal rejection-journal rows. Pending, retrying,
-and publication-exhausted events all remain nonterminal `PENDING` rows and
-never qualify.
+deletes any successful recovery audits and local dead-letter handoffs that
+reference them, then deletes the events in one transaction while preserving
+the payment records. A separate limited batch removes old minimal
+rejection-journal rows. Pending, retrying, and publication-exhausted events all
+remain nonterminal `PENDING` rows and never qualify.
 
 ## Deployment Topology
 

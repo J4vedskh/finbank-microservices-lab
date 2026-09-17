@@ -3,6 +3,7 @@ package com.banking.payment.service;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryRejectionAudit;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
@@ -30,6 +31,8 @@ class PaymentOutboxRetentionTransactionTest {
 
     private final PaymentOutboxRepository outboxRepository =
             mock(PaymentOutboxRepository.class);
+    private final PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository =
+            mock(PaymentOutboxDeadLetterHandoffRepository.class);
     private final PaymentOutboxRecoveryAuditRepository recoveryAuditRepository =
             mock(PaymentOutboxRecoveryAuditRepository.class);
     private final PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository =
@@ -37,6 +40,7 @@ class PaymentOutboxRetentionTransactionTest {
     private final PaymentOutboxRetentionTransaction transaction =
             new PaymentOutboxRetentionTransaction(
                     outboxRepository,
+                    deadLetterHandoffRepository,
                     recoveryAuditRepository,
                     rejectionAuditRepository
             );
@@ -55,6 +59,8 @@ class PaymentOutboxRetentionTransactionTest {
                 )).thenReturn(List.of(firstEvent, secondEvent));
         when(recoveryAuditRepository.deleteByOutboxEventIdIn(List.of(11L, 12L)))
                 .thenReturn(3);
+        when(deadLetterHandoffRepository.deleteByOutboxEventIdIn(List.of(11L, 12L)))
+                .thenReturn(4);
         when(rejectionAuditRepository
                 .findByRejectedAtLessThanOrderByRejectedAtAscIdAsc(
                         REJECTION_CUTOFF,
@@ -67,13 +73,16 @@ class PaymentOutboxRetentionTransactionTest {
                 2
         );
 
-        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(2, 3, 1));
+        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(2, 3, 4, 1));
         InOrder deletionOrder = inOrder(
                 recoveryAuditRepository,
+                deadLetterHandoffRepository,
                 outboxRepository,
                 rejectionAuditRepository
         );
         deletionOrder.verify(recoveryAuditRepository)
+                .deleteByOutboxEventIdIn(List.of(11L, 12L));
+        deletionOrder.verify(deadLetterHandoffRepository)
                 .deleteByOutboxEventIdIn(List.of(11L, 12L));
         deletionOrder.verify(outboxRepository).deleteAllByIdInBatch(List.of(11L, 12L));
         deletionOrder.verify(rejectionAuditRepository).deleteAllByIdInBatch(List.of(21L));
@@ -100,8 +109,9 @@ class PaymentOutboxRetentionTransactionTest {
                 100
         );
 
-        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(0, 0, 0));
+        assertThat(result).isEqualTo(new PaymentOutboxRetentionResult(0, 0, 0, 0));
         verify(recoveryAuditRepository, never()).deleteByOutboxEventIdIn(any());
+        verify(deadLetterHandoffRepository, never()).deleteByOutboxEventIdIn(any());
         verify(outboxRepository, never()).deleteAllByIdInBatch(any());
         verify(rejectionAuditRepository, never()).deleteAllByIdInBatch(any());
     }
@@ -127,7 +137,7 @@ class PaymentOutboxRetentionTransactionTest {
                 .hasMessage("audit delete failed");
 
         verify(outboxRepository, never()).deleteAllByIdInBatch(any());
-        verifyNoInteractions(rejectionAuditRepository);
+        verifyNoInteractions(deadLetterHandoffRepository, rejectionAuditRepository);
     }
 
     private PaymentOutboxEvent event(Long id) {

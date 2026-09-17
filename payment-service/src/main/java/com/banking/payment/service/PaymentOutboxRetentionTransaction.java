@@ -3,6 +3,7 @@ package com.banking.payment.service;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryRejectionAudit;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
@@ -17,15 +18,18 @@ import java.util.List;
 @Service
 public class PaymentOutboxRetentionTransaction {
     private final PaymentOutboxRepository paymentOutboxRepository;
+    private final PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
     private final PaymentOutboxRecoveryAuditRepository recoveryAuditRepository;
     private final PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository;
 
     public PaymentOutboxRetentionTransaction(
             PaymentOutboxRepository paymentOutboxRepository,
+            PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository,
             PaymentOutboxRecoveryAuditRepository recoveryAuditRepository,
             PaymentOutboxRecoveryRejectionAuditRepository rejectionAuditRepository
     ) {
         this.paymentOutboxRepository = paymentOutboxRepository;
+        this.deadLetterHandoffRepository = deadLetterHandoffRepository;
         this.recoveryAuditRepository = recoveryAuditRepository;
         this.rejectionAuditRepository = rejectionAuditRepository;
     }
@@ -48,8 +52,11 @@ public class PaymentOutboxRetentionTransaction {
                 .map(PaymentOutboxEvent::getId)
                 .toList();
         int recoveryAuditsDeleted = 0;
+        int deadLetterHandoffsDeleted = 0;
         if (!publishedEventIds.isEmpty()) {
             recoveryAuditsDeleted = recoveryAuditRepository
+                    .deleteByOutboxEventIdIn(publishedEventIds);
+            deadLetterHandoffsDeleted = deadLetterHandoffRepository
                     .deleteByOutboxEventIdIn(publishedEventIds);
             paymentOutboxRepository.deleteAllByIdInBatch(publishedEventIds);
         }
@@ -69,6 +76,7 @@ public class PaymentOutboxRetentionTransaction {
         return new PaymentOutboxRetentionResult(
                 publishedEventIds.size(),
                 recoveryAuditsDeleted,
+                deadLetterHandoffsDeleted,
                 rejectionAuditIds.size()
         );
     }

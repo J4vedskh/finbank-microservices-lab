@@ -68,6 +68,34 @@ aligning it to `/actuator/prometheus` remains pending until platform work is
 released. Both paths stay allowlisted so this security change does not further
 restrict the existing scraper.
 
+## Local Dead-Letter Handoffs
+
+Each committed terminal outbox cycle creates one row in
+`payment_outbox_dead_letter_handoff`. It contains only the source event id,
+exhaustion sequence and time, final attempt count, and safe failure type. The
+source outbox row continues to own the topic, key, and payload.
+
+An operator with approved read-only database access can list all recorded
+handoffs without selecting payload data:
+
+```sql
+SELECT id,
+       outbox_event_id,
+       exhaustion_sequence,
+       exhausted_at,
+       attempt_count,
+       failure_type
+FROM payment_outbox_dead_letter_handoff
+ORDER BY exhausted_at, id;
+```
+
+Recovery preserves the prior handoff and appends another only if a later retry
+cycle also exhausts. After recovery and successful publication, opt-in outbox
+retention deletes the handoffs immediately before deleting the old source event.
+This table is not evidence of Kafka DLT publication or consumer receipt. A
+restricted application-level inspection boundary and independently available
+external delivery remain future work.
+
 ## Outbox Retention
 
 Published outbox and recovery-journal cleanup is disabled by default. Before
@@ -85,16 +113,18 @@ PAYMENT_OUTBOX_RETENTION_CLEANUP_DELAY_MS=86400000
 The service accepts retention periods from `1..36500` days and batch sizes from
 `1..1000`, and rejects cleanup delays below one second at startup. Each run
 claims at most one configured batch of strictly old `PUBLISHED` events and one
-batch of old rejection rows. It does not delete payments, pending retries, or
-exhausted events; all of those event categories remain in nonterminal
-`PENDING` state. Enabling retention permanently removes eligible local event
-payloads and recovery history; it does not confirm downstream consumer
-completion.
+batch of old rejection rows. Recovery audits and dead-letter handoffs are
+removed before each eligible event. It does not delete payments, pending
+retries, or exhausted events; all of those event categories remain in
+nonterminal `PENDING` state. Enabling retention permanently removes eligible
+local event payloads and recovery history; it does not confirm downstream
+consumer completion.
 
 The repository currently validates cleanup behavior with H2. Qualify lock
-contention and index creation against the target MySQL version, and manage the
-two retention indexes through a reviewed schema migration, before treating the
-job as production-ready.
+contention and the new exhaustion-sequence column, handoff table, constraints,
+and indexes against the target MySQL version. Use a reviewed schema migration
+and explicitly backfill any already-exhausted production rows before treating
+the handoff or retention jobs as production-ready.
 
 ## Local Infrastructure
 
