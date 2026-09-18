@@ -36,6 +36,7 @@ Base URL: `http://localhost:8082`
 | `GET` | `/payments` | List payments |
 | `POST` | `/payments` | Create a payment with a required `Idempotency-Key` header and durably queue its Kafka event |
 | `POST` | `/internal/payment-outbox/{eventId}/recovery` | Re-arm an exhausted outbox event through restricted operator access |
+| `GET` | `/internal/payment-outbox/dead-letter-handoffs` | Inspect bounded safe metadata for retained local handoffs |
 
 `Idempotency-Key` accepts 1–128 visible ASCII characters. Repeating the same
 key and request returns the original payment; reusing the key for different
@@ -111,6 +112,30 @@ credentials cannot activate unless `server.ssl.enabled` is true. A correctly
 configured Spring Boot TLS connector is therefore required before the endpoint
 can be used; this repository does not add a separate clear-HTTP connector, and
 proxy-only TLS termination is not yet supported.
+
+### Restricted Dead-Letter Handoff Inspection
+
+Endpoint URL:
+`https://localhost:8082/internal/payment-outbox/dead-letter-handoffs`
+
+The inspection route is HTTPS-only and requires
+`PAYMENT_OUTBOX_HANDOFF_INSPECTION`. The current configured local Basic operator
+has both inspection and recovery authorities; it is not a separately provisioned
+read-only identity. External identity integration remains future work.
+
+Results are ordered by handoff id and bounded to 50 rows by default or 100 rows
+at most. Pass the returned `nextCursor` as the next request's exclusive
+`afterId`; a null cursor means no additional row was observed for that request,
+although later terminal cycles can create newer handoffs. The endpoint reads
+one extra scalar row only to determine whether another page exists and does not
+run an unbounded list or total-count query.
+
+Each item contains only handoff id, source event id, exhaustion sequence and
+time, final attempt count, and a nullable safe exception class name. It excludes
+topic, event key, payload, payment/account data, current outbox internals,
+exception messages, recovery actor/reason/key data, and rejection-audit data.
+The response proves local database staging only—not Kafka DLT publication,
+external delivery, or downstream consumption.
 
 ## Transaction Service
 

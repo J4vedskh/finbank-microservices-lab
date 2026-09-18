@@ -71,6 +71,13 @@ the prior handoff as history, and a later terminal cycle appends a new one. This
 is durable local staging, not proof that a Kafka DLT or any external consumer
 received the event.
 
+A separate HTTPS-only, read-only operator route exposes bounded scalar pages of
+that safe handoff metadata. The query projects only handoff and source event ids,
+cycle/time, attempt count, and sanitized failure type; it never loads the source
+payload or payment/account data. A dedicated inspection authority is distinct
+from recovery authority for future identity separation, although the current
+single configured local operator receives both.
+
 An opt-in maintenance job bounds payment-database growth without changing the
 relay path. It locks a limited set of strictly old `PUBLISHED` outbox rows,
 deletes any successful recovery audits and local dead-letter handoffs that

@@ -101,6 +101,18 @@ class PaymentOutboxRecoveryControllerTest {
     }
 
     @Test
+    void requeueExhausted_inspectionAuthorityAloneIsForbidden() throws Exception {
+        mockMvc.perform(validRequest().with(user("inspection-only")
+                        .authorities(new SimpleGrantedAuthority(
+                                PaymentRecoverySecurityConfiguration
+                                        .HANDOFF_INSPECTION_AUTHORITY
+                        ))))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(recoveryService);
+    }
+
+    @Test
     void requeueExhausted_authorizedOperatorUsesPrincipalAsActorAndReturnsSafeReceipt()
             throws Exception {
         when(recoveryService.requeueExhausted(7L, COMMAND_KEY, USERNAME, REASON))
