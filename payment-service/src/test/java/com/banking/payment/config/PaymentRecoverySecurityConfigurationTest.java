@@ -24,7 +24,7 @@ class PaymentRecoverySecurityConfigurationTest {
     }
 
     @Test
-    void paymentRecoveryUsers_bcryptCredentialCreatesOnlyRecoveryAuthority() {
+    void paymentRecoveryUsers_bcryptCredentialCreatesOperatorAuthorities() {
         String passwordHash = "{bcrypt}" + new BCryptPasswordEncoder(4).encode(PASSWORD);
 
         UserDetails user = configuration
@@ -35,7 +35,10 @@ class PaymentRecoverySecurityConfigurationTest {
         assertThat(user.getPassword()).isEqualTo(passwordHash);
         assertThat(user.getAuthorities())
                 .extracting("authority")
-                .containsExactly(PaymentRecoverySecurityConfiguration.RECOVERY_AUTHORITY);
+                .containsExactlyInAnyOrder(
+                        PaymentRecoverySecurityConfiguration.RECOVERY_AUTHORITY,
+                        PaymentRecoverySecurityConfiguration.HANDOFF_INSPECTION_AUTHORITY
+                );
     }
 
     @Test

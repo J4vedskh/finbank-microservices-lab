@@ -38,10 +38,11 @@ gantt
 | 11 | Add trusted-proxy and external identity integration |
 | 12 | Completed: add opt-in bounded retention for published outbox and recovery-audit data |
 | 13 | Completed: persist an atomic local dead-letter handoff for each terminal publication cycle |
-| 14 | Add restricted handoff inspection, independently available delivery, and MySQL qualification |
-| 15 | Add Swagger UI and expand OpenAPI documentation |
-| 16 | Add health probes and resource limits to Kubernetes manifests |
-| 17 | Add Prometheus dashboard documentation and screenshots |
+| 14 | Completed: add HTTPS-only bounded operator inspection for retained handoffs |
+| 15 | Add independently available dead-letter delivery and MySQL qualification |
+| 16 | Add Swagger UI and expand OpenAPI documentation |
+| 17 | Add health probes and resource limits to Kubernetes manifests |
+| 18 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

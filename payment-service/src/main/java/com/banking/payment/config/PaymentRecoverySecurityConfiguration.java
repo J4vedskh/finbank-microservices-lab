@@ -20,6 +20,8 @@ import java.util.regex.Pattern;
 @Configuration
 public class PaymentRecoverySecurityConfiguration {
     public static final String RECOVERY_AUTHORITY = "PAYMENT_OUTBOX_RECOVERY";
+    public static final String HANDOFF_INSPECTION_AUTHORITY =
+            "PAYMENT_OUTBOX_HANDOFF_INSPECTION";
     private static final Pattern BCRYPT_HASH = Pattern.compile(
             "^\\{bcrypt}\\$2[aby]\\$(\\d{2})\\$[./A-Za-z0-9]{53}$"
     );
@@ -30,6 +32,10 @@ public class PaymentRecoverySecurityConfiguration {
                 .csrf(csrf -> csrf.disable())
                 .requestCache(cache -> cache.disable())
                 .requiresChannel(channels -> channels
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/internal/payment-outbox/dead-letter-handoffs"
+                        ).requiresSecure()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/internal/payment-outbox/*/recovery"
@@ -47,6 +53,10 @@ public class PaymentRecoverySecurityConfiguration {
                                 "/actuator/prometheus",
                                 "/metrics"
                         ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/internal/payment-outbox/dead-letter-handoffs"
+                        ).hasAuthority(HANDOFF_INSPECTION_AUTHORITY)
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/internal/payment-outbox/*/recovery"
@@ -100,7 +110,7 @@ public class PaymentRecoverySecurityConfiguration {
         return new InMemoryUserDetailsManager(
                 User.withUsername(normalizedUsername)
                         .password(normalizedPasswordHash)
-                        .authorities(RECOVERY_AUTHORITY)
+                        .authorities(RECOVERY_AUTHORITY, HANDOFF_INSPECTION_AUTHORITY)
                         .build()
         );
     }

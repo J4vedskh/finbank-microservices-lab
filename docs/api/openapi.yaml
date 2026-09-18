@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.2.0
+  version: 0.3.0
   description: Contract sketch for the account, payment, and transaction services.
 servers:
   - url: http://localhost:8081
@@ -159,6 +159,57 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /internal/payment-outbox/dead-letter-handoffs:
+    get:
+      tags: [Payment Operations]
+      summary: Inspect retained local dead-letter handoffs
+      description: >-
+        Restricted, read-only inspection of immutable local terminal-publication
+        handoffs. Results contain only safe handoff metadata and use an exclusive
+        primary-key cursor. A handoff proves local database staging only; it is
+        not a Kafka DLT publication, external-delivery acknowledgement, or
+        downstream consumer receipt.
+      servers:
+        - url: https://localhost:8082
+          description: Payment Service with its HTTPS connector enabled
+      security:
+        - handoffInspectionOperator: []
+      parameters:
+        - name: afterId
+          in: query
+          required: false
+          description: Return handoffs with an id strictly greater than this cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Maximum handoffs returned; one extra row determines the next cursor.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Bounded handoff page returned in ascending handoff-id order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentOutboxDeadLetterHandoffPage"
+        "400":
+          description: Cursor or limit failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Operator credentials are missing or invalid
+        "403":
+          description: Authenticated identity lacks handoff-inspection authority
   /transactions:
     get:
       tags: [Transactions]
@@ -200,6 +251,14 @@ components:
       description: >-
         Dedicated operator credential supplied through runtime configuration.
         The Spring Boot TLS connector must be enabled before credentials activate.
+    handoffInspectionOperator:
+      type: http
+      scheme: basic
+      description: >-
+        Configured local Basic operator credential with
+        PAYMENT_OUTBOX_HANDOFF_INSPECTION authority. The current operator also
+        has recovery authority; external identity integration can separate the
+        roles later.
   schemas:
     Account:
       type: object
@@ -296,6 +355,55 @@ components:
         requeuedAt:
           type: string
           format: date-time
+    PaymentOutboxDeadLetterHandoffPage:
+      type: object
+      required: [handoffs, nextCursor]
+      properties:
+        handoffs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentOutboxDeadLetterHandoffSummary"
+        nextCursor:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: >-
+            Last returned handoff id when another row was observed for this
+            request; otherwise null. New terminal cycles can appear later.
+    PaymentOutboxDeadLetterHandoffSummary:
+      type: object
+      required:
+        - handoffId
+        - eventId
+        - exhaustionSequence
+        - exhaustedAt
+        - attemptCount
+        - failureType
+      properties:
+        handoffId:
+          type: integer
+          format: int64
+          minimum: 1
+        eventId:
+          type: integer
+          format: int64
+          minimum: 1
+        exhaustionSequence:
+          type: integer
+          format: int32
+          minimum: 1
+        exhaustedAt:
+          type: string
+          format: date-time
+        attemptCount:
+          type: integer
+          format: int32
+          minimum: 0
+        failureType:
+          type: string
+          nullable: true
+          description: Sanitized exception class name; exception messages are never returned.
     Problem:
       type: object
       properties:

@@ -48,7 +48,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Client to Payment Service | Exact retries return the original result through the idempotency key. | Define key expiry and retention. |
 | Payment Service to database | The request fails visibly when its atomic payment/outbox transaction fails. | Add bounded transient database retry only after failure classification exists. |
-| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, atomically stages a local dead-letter handoff, supports audited recovery, and has opt-in bounded retention. | Add restricted handoff inspection, independently available delivery, and MySQL qualification. |
+| Payment outbox to Kafka | A scheduled relay waits for acknowledgement, uses capped exponential delays, stops after five failed sends by default, atomically stages a local dead-letter handoff, supports restricted inspection and audited recovery, and has opt-in bounded retention. | Add independently available delivery and MySQL qualification. |
 | Transaction Service consumer | Malformed or persistence failures reach the Kafka container; duplicate payment events are safe. | Configure bounded backoff and dead-letter routing. |
 
 ## Transaction Event Idempotency
@@ -131,6 +131,15 @@ receipt. Sending to the same unavailable Kafka cluster would share the original
 failure dependency. A future relay must use an independently qualified
 destination, persist its own acknowledgement state, and receive end-to-end
 broker testing after platform work is released.
+
+Operators can inspect retained handoffs through a separate HTTPS-only GET route
+using `PAYMENT_OUTBOX_HANDOFF_INSPECTION`. It returns bounded scalar projections
+ordered by handoff id with an exclusive cursor; no entity graph, payload, event
+key, topic, payment/account data, exception message, or recovery metadata is
+returned. The current configured local Basic operator receives both inspection
+and recovery authorities, so it is not a separately provisioned read-only
+identity. External identity integration remains the boundary for splitting
+those roles.
 
 ## Internal Audited, Idempotent Recovery Command
 
@@ -250,5 +259,6 @@ schema-migration qualification remain separate work; relying on
 - [x] Journal known business rejections without sensitive request or identity data.
 - [x] Add opt-in bounded retention for old published outbox and recovery-audit data.
 - [x] Add an atomic, payload-free local dead-letter handoff for terminal publication cycles.
-- Add trusted-proxy and external identity support, restricted handoff inspection, independently available delivery, and MySQL qualification.
+- [x] Add HTTPS-only, bounded, safe operator inspection for retained handoffs.
+- Add trusted-proxy and external identity support, independently available delivery, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

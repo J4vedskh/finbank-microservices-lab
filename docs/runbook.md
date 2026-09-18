@@ -28,18 +28,19 @@ Preview locally:
 mkdocs serve
 ```
 
-## Recovery Operator Access
+## Payment Outbox Operator Access
 
-The payment service exposes one restricted recovery route. Supply both values
-through the runtime secret mechanism; never commit either value:
+The payment service exposes restricted recovery and handoff-inspection routes.
+Supply both values through the runtime secret mechanism; never commit either
+value:
 
 ```text
 PAYMENT_RECOVERY_OPERATOR_USERNAME=<dedicated-operator-name>
 PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH=<Spring-style {bcrypt} hash>
 ```
 
-When both values are blank, no fallback operator exists and the recovery route
-returns HTTP `401`. Supplying only one value, an invalid username, plaintext
+When both values are blank, no fallback operator exists and both routes return
+HTTP `401`. Supplying only one value, an invalid username, plaintext
 password, a non-BCrypt value, or credentials without `server.ssl.enabled=true`
 stops startup instead of weakening access. Configure the standard Spring Boot
 `server.ssl.*` keystore settings through the deployment secret mechanism before
@@ -47,10 +48,12 @@ activating the operator. Keep the raw client password in an approved secret
 store, not in repository files or shell history.
 
 This is a single-operator HTTP Basic boundary that is disabled by default. The
-application does not enforce loopback-only exposure or provide a TLS connector,
-but it requires a secure recovery request. The repository does not configure a
-separate clear-HTTP connector; the security filter redirects only an insecure
-servlet request that reaches it.
+configured local operator receives both `PAYMENT_OUTBOX_RECOVERY` and
+`PAYMENT_OUTBOX_HANDOFF_INSPECTION`; it is not a separate read-only identity.
+The application does not enforce loopback-only exposure or provide a TLS
+connector, but both internal routes require secure requests. The repository
+does not configure a separate clear-HTTP connector; the security filter
+redirects only an insecure servlet request that reaches it.
 Network exposure and TLS material remain deployment responsibilities. Proxy-only
 TLS termination and forwarded-scheme trust are not supported yet; external
 identity integration is also pending. Public payment routes plus health, info,
@@ -75,8 +78,23 @@ Each committed terminal outbox cycle creates one row in
 exhaustion sequence and time, final attempt count, and safe failure type. The
 source outbox row continues to own the topic, key, and payload.
 
-An operator with approved read-only database access can list all recorded
-handoffs without selecting payload data:
+Use the restricted endpoint for normal inspection. Omitting `limit` returns at
+most 50 rows; the maximum is 100. When `nextCursor` is non-null, pass it as the
+exclusive `afterId` in the next request:
+
+```bash
+curl --user "<operator-username>" \
+  --cacert "<payment-service-ca.pem>" \
+  "https://localhost:8082/internal/payment-outbox/dead-letter-handoffs?limit=50"
+```
+
+The response contains only handoff id, event id, exhaustion sequence and time,
+attempt count, and nullable safe failure type. It does not return topic, event
+key, payload, payment/account data, exception messages, or recovery metadata.
+A null `nextCursor` means no further row was observed for that request; a later
+terminal cycle can still create a newer handoff.
+
+Approved read-only database access remains a break-glass fallback:
 
 ```sql
 SELECT id,
@@ -92,9 +110,9 @@ ORDER BY exhausted_at, id;
 Recovery preserves the prior handoff and appends another only if a later retry
 cycle also exhausts. After recovery and successful publication, opt-in outbox
 retention deletes the handoffs immediately before deleting the old source event.
-This table is not evidence of Kafka DLT publication or consumer receipt. A
-restricted application-level inspection boundary and independently available
-external delivery remain future work.
+Neither the endpoint nor this table is evidence of Kafka DLT publication or
+consumer receipt. Independently available external delivery remains future
+work.
 
 ## Outbox Retention
 
