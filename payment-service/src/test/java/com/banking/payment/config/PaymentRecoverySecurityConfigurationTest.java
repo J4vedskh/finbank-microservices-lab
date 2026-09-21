@@ -17,7 +17,7 @@ class PaymentRecoverySecurityConfigurationTest {
 
     @Test
     void paymentRecoveryUsers_noCredentialsConfiguredCreatesNoFallbackUser() {
-        UserDetailsService users = configuration.paymentRecoveryUsers("", "", false);
+        UserDetailsService users = users("", "", false);
 
         assertThatThrownBy(() -> users.loadUserByUsername("admin"))
                 .isInstanceOf(UsernameNotFoundException.class);
@@ -28,7 +28,13 @@ class PaymentRecoverySecurityConfigurationTest {
         String passwordHash = "{bcrypt}" + new BCryptPasswordEncoder(4).encode(PASSWORD);
 
         UserDetails user = configuration
-                .paymentRecoveryUsers("recovery-operator", passwordHash, true)
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "recovery-operator",
+                        passwordHash,
+                        true,
+                        "none"
+                )
                 .loadUserByUsername("recovery-operator");
 
         assertThat(user.getUsername()).isEqualTo("recovery-operator");
@@ -43,10 +49,10 @@ class PaymentRecoverySecurityConfigurationTest {
 
     @Test
     void paymentRecoveryUsers_partialCredentialsFailStartup() {
-        assertThatThrownBy(() -> configuration.paymentRecoveryUsers("recovery-operator", "", false))
+        assertThatThrownBy(() -> users("recovery-operator", "", false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator username and password hash must be configured together");
-        assertThatThrownBy(() -> configuration.paymentRecoveryUsers("", validHash(), false))
+        assertThatThrownBy(() -> users("", validHash(), false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator username and password hash must be configured together");
     }
@@ -54,19 +60,51 @@ class PaymentRecoverySecurityConfigurationTest {
     @Test
     void paymentRecoveryUsers_credentialsWithoutServerSslFailStartup() {
         assertThatThrownBy(() -> configuration
-                .paymentRecoveryUsers("recovery-operator", validHash(), false))
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "recovery-operator",
+                        validHash(),
+                        false,
+                        "none"
+                ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator credentials require server SSL to be enabled");
     }
 
     @Test
+    void paymentRecoveryUsers_activeOperatorRejectsGlobalForwardedHeaders() {
+        assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
+                basicAuthentication(),
+                "recovery-operator",
+                validHash(),
+                true,
+                "framework"
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "Operator authentication requires server.forward-headers-strategy=none"
+                );
+    }
+
+    @Test
     void paymentRecoveryUsers_cleartextOrNoopPasswordIsRejected() {
         assertThatThrownBy(() -> configuration
-                .paymentRecoveryUsers("recovery-operator", "cleartext-password", true))
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "recovery-operator",
+                        "cleartext-password",
+                        true,
+                        "none"
+                ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator password must be a BCrypt hash");
         assertThatThrownBy(() -> configuration
-                .paymentRecoveryUsers("recovery-operator", "{noop}password", true))
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "recovery-operator",
+                        "{noop}password",
+                        true,
+                        "none"
+                ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator password must be a BCrypt hash");
     }
@@ -81,7 +119,13 @@ class PaymentRecoverySecurityConfigurationTest {
     @Test
     void paymentRecoveryUsers_invalidUsernameIsRejected() {
         assertThatThrownBy(() -> configuration
-                .paymentRecoveryUsers("operator:name", validHash(), true))
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "operator:name",
+                        validHash(),
+                        true,
+                        "none"
+                ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator username must contain 1 to 100 visible ASCII characters without a colon");
     }
@@ -92,8 +136,35 @@ class PaymentRecoverySecurityConfigurationTest {
 
     private void assertInvalidHash(String passwordHash) {
         assertThatThrownBy(() -> configuration
-                .paymentRecoveryUsers("recovery-operator", passwordHash, true))
+                .paymentRecoveryUsers(
+                        basicAuthentication(),
+                        "recovery-operator",
+                        passwordHash,
+                        true,
+                        "none"
+                ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Recovery operator password must be a BCrypt hash");
+    }
+
+    private UserDetailsService users(
+            String username,
+            String passwordHash,
+            boolean serverSslEnabled
+    ) {
+        return configuration.paymentRecoveryUsers(
+                basicAuthentication(),
+                username,
+                passwordHash,
+                serverSslEnabled,
+                "none"
+        );
+    }
+
+    private PaymentOperatorAuthenticationProperties basicAuthentication() {
+        return new PaymentOperatorAuthenticationProperties(
+                PaymentOperatorAuthenticationProperties.Mode.BASIC,
+                new PaymentOperatorAuthenticationProperties.ExternalJwt("", "", "")
+        );
     }
 }

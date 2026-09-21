@@ -137,9 +137,8 @@ using `PAYMENT_OUTBOX_HANDOFF_INSPECTION`. It returns bounded scalar projections
 ordered by handoff id with an exclusive cursor; no entity graph, payload, event
 key, topic, payment/account data, exception message, or recovery metadata is
 returned. The current configured local Basic operator receives both inspection
-and recovery authorities, so it is not a separately provisioned read-only
-identity. External identity integration remains the boundary for splitting
-those roles.
+and recovery authorities, while external JWT identities can receive either
+capability through exact scopes.
 
 ## Internal Audited, Idempotent Recovery Command
 
@@ -160,13 +159,21 @@ key for another event, actor, or reason fails as a command conflict. Requeueing
 authorizes another idempotent delivery attempt; it does not claim that the
 earlier timed-out delivery failed.
 
-A restricted HTTP adapter now authenticates one configured operator with HTTP
-Basic before invoking this command. It is fail-closed: no default account is
+A restricted HTTP adapter selects exactly one operator authentication mode.
+Basic mode remains the default and is fail-closed: no default account is
 created, both the username and a Spring-style BCrypt hash must come from the
-runtime environment, operator credentials require `server.ssl.enabled=true`,
-and partial or invalid configuration stops startup. The authenticated principal
-becomes the audit actor, so an HTTP request cannot supply or override that
-identity. The response includes only the event id and original requeue time; it
+runtime environment, and partial or invalid configuration stops startup. JWT
+mode disables Basic, rejects local credentials, and accepts only RS256 tokens
+validated against absolute HTTPS issuer and JWK-set URIs, exact audience,
+required `iat` and `exp`, optional `nbf`, and a visible-ASCII subject no longer
+than 100 characters. Time validation allows 60 seconds of clock skew, and scopes
+may come from the standard `scope` string or `scp` collection.
+Only `payment.outbox.recovery` and `payment.outbox.handoff-inspection` scopes map
+to their matching authorities; every other scope is ignored.
+
+The Basic username or validated JWT `sub` becomes the audit actor, so an HTTP
+request cannot supply or override that identity. Bearer tokens are never stored
+or logged. The response includes only the event id and original requeue time; it
 excludes command keys, hashes, reasons, event data, and persistence details.
 Because the reason is retained in the audit table, it must never contain
 credentials, tokens, payloads, personal data, or secrets.
@@ -174,15 +181,16 @@ Public payment routes plus health, info, and monitoring paths remain
 allowlisted. Apart from the framework `/error` dispatch, unlisted
 payment-service paths are denied.
 
-HTTP Basic does not provide transport security, so the recovery route requires
-a secure request. The application relies on a Spring Boot TLS connector
-configured through external `server.ssl.*` settings and does not add a separate
-clear-HTTP connector. Proxy-only TLS termination and forwarded-scheme trust are
-not supported yet.
-Network exposure and TLS material remain deployment responsibilities. External
-identity integration is not provided yet. Immutability is not a database
-permission boundary, and external dead-letter delivery plus MySQL persistence,
-locking, and retention qualification remain pending.
+Both modes require `server.ssl.enabled=true` and a directly secure request. The
+application relies on a Spring Boot TLS connector configured through external
+`server.ssl.*` settings and does not add a separate clear-HTTP connector.
+`server.forward-headers-strategy` is pinned to `none`; an active operator refuses
+startup if it is overridden. Proxy-only TLS termination and forwarded-scheme
+trust are not supported yet.
+Network exposure, TLS material, IdP/JWK availability and rotation, and real-token
+end-to-end validation remain deployment responsibilities. Immutability is not a
+database permission boundary, and external dead-letter delivery plus MySQL
+persistence, locking, and retention qualification remain pending.
 
 ### Minimal Business-Rejection Journal
 
@@ -260,5 +268,6 @@ schema-migration qualification remain separate work; relying on
 - [x] Add opt-in bounded retention for old published outbox and recovery-audit data.
 - [x] Add an atomic, payload-free local dead-letter handoff for terminal publication cycles.
 - [x] Add HTTPS-only, bounded, safe operator inspection for retained handoffs.
-- Add trusted-proxy and external identity support, independently available delivery, and MySQL qualification.
+- [x] Add mutually exclusive external RS256 JWT identity with issuer, audience, subject, and scope validation.
+- Add trusted-proxy support, independently available delivery, and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.
