@@ -35,14 +35,15 @@ gantt
 | 8 | Completed: add an internal row-locked, audited, idempotent recovery command |
 | 9 | Completed: add a fail-closed HTTP Basic operator recovery adapter |
 | 10 | Completed: journal business-level recovery rejections without sensitive request data |
-| 11 | Add trusted-proxy and external identity integration |
-| 12 | Completed: add opt-in bounded retention for published outbox and recovery-audit data |
-| 13 | Completed: persist an atomic local dead-letter handoff for each terminal publication cycle |
-| 14 | Completed: add HTTPS-only bounded operator inspection for retained handoffs |
-| 15 | Add independently available dead-letter delivery and MySQL qualification |
-| 16 | Add Swagger UI and expand OpenAPI documentation |
-| 17 | Add health probes and resource limits to Kubernetes manifests |
-| 18 | Add Prometheus dashboard documentation and screenshots |
+| 11 | Completed: add mutually exclusive external JWT identity for operator routes |
+| 12 | Add explicit trusted-proxy HTTPS scheme support |
+| 13 | Completed: add opt-in bounded retention for published outbox and recovery-audit data |
+| 14 | Completed: persist an atomic local dead-letter handoff for each terminal publication cycle |
+| 15 | Completed: add HTTPS-only bounded operator inspection for retained handoffs |
+| 16 | Add independently available dead-letter delivery and MySQL qualification |
+| 17 | Add Swagger UI and expand OpenAPI documentation |
+| 18 | Add health probes and resource limits to Kubernetes manifests |
+| 19 | Add Prometheus dashboard documentation and screenshots |
 
 ## Commit Standard
 

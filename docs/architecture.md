@@ -55,12 +55,13 @@ Delivery is at least once: a crash after Kafka acknowledgement but before the
 database commit can cause a repeat publication. The transaction service's
 payment-id uniqueness makes that repeat safe. Bounded exponential retry,
 terminal relay exhaustion, and an internal row-locked, audited, idempotent
-recovery command are implemented. A fail-closed HTTP Basic adapter authenticates
-the configured operator only through an enabled HTTPS connector and supplies
-its principal name as the successful-command audit actor. Known business
-rejections commit a separate minimal journal containing only requested event id,
-fixed code, and server time. Trusted-proxy and external identity support,
-external dead-letter delivery, and MySQL lock and retention qualification remain tracked in the
+recovery command are implemented. A fail-closed operator adapter selects either
+local HTTP Basic or external RS256 JWT authentication and accepts requests only
+through an enabled HTTPS connector. The Basic username or validated JWT `sub`
+becomes the successful-command audit actor. Known business rejections commit a
+separate minimal journal containing only requested event id, fixed code, and
+server time. Trusted-proxy support, real-IdP qualification, external dead-letter
+delivery, and MySQL lock and retention qualification remain tracked in the
 [resilience guide](resilience.md).
 
 Each committed terminal publication cycle also appends an immutable local
@@ -75,8 +76,8 @@ A separate HTTPS-only, read-only operator route exposes bounded scalar pages of
 that safe handoff metadata. The query projects only handoff and source event ids,
 cycle/time, attempt count, and sanitized failure type; it never loads the source
 payload or payment/account data. A dedicated inspection authority is distinct
-from recovery authority for future identity separation, although the current
-single configured local operator receives both.
+from recovery authority. The local Basic operator receives both; external JWT
+identities can receive either capability through exact scopes.
 
 An opt-in maintenance job bounds payment-database growth without changing the
 relay path. It locks a limited set of strictly old `PUBLISHED` outbox rows,

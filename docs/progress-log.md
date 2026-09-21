@@ -43,12 +43,13 @@ flowchart TD
 | 2026-09-16 | Outbox retention | Added opt-in, batch-limited cleanup for strictly old published outbox events and recovery journals, with foreign-key-safe deletion, rollback, cutoff, nonterminal-state, and payment-preservation coverage. | `mvn -T 1C clean test` |
 | 2026-09-17 | Dead-letter handoff | Added one immutable, payload-free local handoff per committed terminal publication cycle, atomic rollback on handoff-write failure, multi-cycle recovery history, and retention-safe cleanup. | `mvn -T 1C clean test` |
 | 2026-09-18 | Handoff inspection | Added an HTTPS-only, inspection-authority-protected GET route with bounded keyset pagination and scalar safe-field projections that never load source payload or payment/account data. | `mvn -T 1C clean test` |
+| 2026-09-21 | External operator identity | Added mutually exclusive Basic/JWT authentication, RS256 issuer/audience/time/subject validation, exact recovery and inspection scope mapping, safe Bearer failures, and JWT-subject audit attribution. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add trusted-proxy and external identity support for operator routes. |
+| Backend | Add explicit trusted-proxy HTTPS scheme support for operator routes. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

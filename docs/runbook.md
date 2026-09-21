@@ -31,34 +31,62 @@ mkdocs serve
 ## Payment Outbox Operator Access
 
 The payment service exposes restricted recovery and handoff-inspection routes.
-Supply both values through the runtime secret mechanism; never commit either
-value:
+Select exactly one authentication mode. Basic remains the default:
 
 ```text
+PAYMENT_RECOVERY_AUTHENTICATION_MODE=basic
 PAYMENT_RECOVERY_OPERATOR_USERNAME=<dedicated-operator-name>
 PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH=<Spring-style {bcrypt} hash>
 ```
 
-When both values are blank, no fallback operator exists and both routes return
-HTTP `401`. Supplying only one value, an invalid username, plaintext
-password, a non-BCrypt value, or credentials without `server.ssl.enabled=true`
-stops startup instead of weakening access. Configure the standard Spring Boot
-`server.ssl.*` keystore settings through the deployment secret mechanism before
-activating the operator. Keep the raw client password in an approved secret
-store, not in repository files or shell history.
+In Basic mode, when both credential values are blank, no fallback operator
+exists and both routes return HTTP `401`. Supplying only one value, an invalid
+username, plaintext password, a non-BCrypt value, or credentials without
+`server.ssl.enabled=true` stops startup instead of weakening access. Configure
+the standard Spring Boot `server.ssl.*` keystore settings through the deployment
+secret mechanism before activating the operator. Keep the raw client password
+in an approved secret store, not in repository files or shell history.
 
-This is a single-operator HTTP Basic boundary that is disabled by default. The
-configured local operator receives both `PAYMENT_OUTBOX_RECOVERY` and
-`PAYMENT_OUTBOX_HANDOFF_INSPECTION`; it is not a separate read-only identity.
-The application does not enforce loopback-only exposure or provide a TLS
-connector, but both internal routes require secure requests. The repository
-does not configure a separate clear-HTTP connector; the security filter
-redirects only an insecure servlet request that reaches it.
+External JWT mode disables HTTP Basic and requires all three values:
+
+```text
+PAYMENT_RECOVERY_AUTHENTICATION_MODE=jwt
+PAYMENT_RECOVERY_EXTERNAL_JWT_ISSUER_URI=https://identity.example/issuer
+PAYMENT_RECOVERY_EXTERNAL_JWT_JWK_SET_URI=https://identity.example/.well-known/jwks.json
+PAYMENT_RECOVERY_EXTERNAL_JWT_AUDIENCE=finbank-payment-operations
+```
+
+JWT mode accepts RS256 only. It validates exact issuer and audience, requires
+`iat` and `exp`, honors `nbf` when present, and requires a nonblank visible-ASCII
+`sub` no longer than 100 characters. Time checks allow 60 seconds of clock skew.
+The subject becomes the recovery audit actor. Scope mapping is deliberately
+narrow and accepts the standard `scope` string or `scp` collection:
+
+| Scope | Capability |
+| --- | --- |
+| `payment.outbox.recovery` | Submit an audited recovery command |
+| `payment.outbox.handoff-inspection` | Inspect bounded local handoff metadata |
+
+Unknown scopes are ignored. JWT mode rejects local Basic credentials; Basic
+mode rejects JWT settings, so a partial or mixed configuration cannot silently
+weaken authentication. Bearer tokens must never be stored, logged, or copied
+into recovery reasons. IdP provisioning, JWK availability and rotation, and
+real-token end-to-end validation remain deployment responsibilities.
+
+Both modes require `server.ssl.enabled=true` and a directly secure servlet
+request. The application does not enforce loopback-only exposure or provide a
+TLS connector. It does not trust `Forwarded` or `X-Forwarded-*` headers, so
+proxy-only TLS termination remains unsupported. The service pins
+`server.forward-headers-strategy=none` and refuses to start an active operator
+when that strategy is overridden. The repository does not configure a separate
+clear-HTTP connector; the security filter redirects only an insecure servlet
+request that reaches it.
 Network exposure and TLS material remain deployment responsibilities. Proxy-only
-TLS termination and forwarded-scheme trust are not supported yet; external
-identity integration is also pending. Public payment routes plus health, info,
-and Prometheus endpoints remain allowlisted. Apart from the framework `/error`
-dispatch, unlisted payment-service paths are denied.
+TLS termination and forwarded-scheme trust are not supported yet. Real IdP/JWK
+availability, rotation, and token interoperability remain unqualified. Public
+payment routes plus health, info, and Prometheus endpoints remain allowlisted.
+Apart from the framework `/error` dispatch, unlisted payment-service paths are
+denied.
 
 Successful recovery reasons are retained in the successful-command audit table.
 Never include credentials, tokens, event payloads, personal data, or secrets.
@@ -87,6 +115,10 @@ curl --user "<operator-username>" \
   --cacert "<payment-service-ca.pem>" \
   "https://localhost:8082/internal/payment-outbox/dead-letter-handoffs?limit=50"
 ```
+
+That example is for Basic mode. In JWT mode, use the approved identity client to
+send an `Authorization: Bearer` token with
+`payment.outbox.handoff-inspection`; do not paste tokens into shell history.
 
 The response contains only handoff id, event id, exhaustion sequence and time,
 attempt count, and nullable safe failure type. It does not return topic, event

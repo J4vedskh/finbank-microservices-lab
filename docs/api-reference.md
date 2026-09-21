@@ -57,20 +57,45 @@ Example request:
 }
 ```
 
+### Operator Authentication Modes
+
+The two internal payment-outbox routes use exactly one configured authentication
+mode. `basic` remains the default and uses the fail-closed local BCrypt operator.
+`jwt` disables HTTP Basic and accepts only RS256 Bearer tokens validated against
+an absolute HTTPS issuer, explicit JWK-set URI, exact audience, required `iat`
+and `exp`, optional `nbf` when present, and a visible-ASCII `sub` of at most 100
+characters. Time validation allows 60 seconds of clock skew. The JWT subject
+becomes the recovery audit actor.
+
+JWT scopes map narrowly to the existing route authorities:
+
+| JWT scope | Granted authority | Route capability |
+| --- | --- | --- |
+| `payment.outbox.recovery` | `PAYMENT_OUTBOX_RECOVERY` | Submit an audited recovery command |
+| `payment.outbox.handoff-inspection` | `PAYMENT_OUTBOX_HANDOFF_INSPECTION` | Read bounded local handoff metadata |
+
+Scopes may use the standard space-delimited `scope` claim or `scp` collection.
+Unknown scopes are ignored. A token without the route's exact scope receives
+`403`; an invalid issuer, audience, time window, signature, or subject receives
+`401`. Bearer tokens are never persisted or logged; only their validated `sub`
+is retained as the recovery audit actor. Both modes still require the servlet
+request to be directly secure. Forwarded scheme headers and proxy-only TLS
+termination remain untrusted.
+
 ### Restricted Outbox Recovery
 
 Endpoint URL: `https://localhost:8082/internal/payment-outbox/{eventId}/recovery`
 
-The recovery endpoint uses HTTP Basic and requires the
-`PAYMENT_OUTBOX_RECOVERY` authority. The service creates no default operator:
-without a valid environment-supplied username and BCrypt hash, authentication
-fails with HTTP `401`. Configured credentials are rejected at startup unless
-the Spring Boot HTTPS connector is enabled. The authenticated username becomes
-the audit actor; the request cannot choose or override it.
+The recovery endpoint requires `PAYMENT_OUTBOX_RECOVERY`. In Basic mode the
+service creates no default operator: without a valid environment-supplied
+username and BCrypt hash, authentication fails with HTTP `401`. In JWT mode a
+validated token needs `payment.outbox.recovery`; its `sub` becomes the audit
+actor. The request cannot choose or override either identity.
 
 Request headers:
 
-- `Authorization: Basic ...`
+- `Authorization: Basic ...` in Basic mode, or `Authorization: Bearer ...` in
+  JWT mode.
 - `Idempotency-Key`: 16–128 visible ASCII characters. Use a new high-entropy
   value for each intended recovery command.
 
@@ -106,12 +131,12 @@ authorization, insecure-request, and infrastructure failures are not business
 rejection records. If the journal cannot be written, the original `404`/`409`
 is withheld and the endpoint returns a generic `503` instead.
 Responses never include the raw key, its digest, the stored event payload, the
-reason, or persistence details. HTTP Basic does not provide transport security.
-The security filter rejects an insecure servlet request, and configured operator
-credentials cannot activate unless `server.ssl.enabled` is true. A correctly
-configured Spring Boot TLS connector is therefore required before the endpoint
-can be used; this repository does not add a separate clear-HTTP connector, and
-proxy-only TLS termination is not yet supported.
+reason, or persistence details. Neither Basic nor Bearer authentication replaces
+transport security. The security filter rejects an insecure servlet request,
+and the active operator mode cannot activate unless `server.ssl.enabled` is
+true. A correctly configured Spring Boot TLS connector is therefore required;
+this repository does not add a separate clear-HTTP connector, and proxy-only TLS
+termination is not yet supported.
 
 ### Restricted Dead-Letter Handoff Inspection
 
@@ -119,9 +144,9 @@ Endpoint URL:
 `https://localhost:8082/internal/payment-outbox/dead-letter-handoffs`
 
 The inspection route is HTTPS-only and requires
-`PAYMENT_OUTBOX_HANDOFF_INSPECTION`. The current configured local Basic operator
-has both inspection and recovery authorities; it is not a separately provisioned
-read-only identity. External identity integration remains future work.
+`PAYMENT_OUTBOX_HANDOFF_INSPECTION`. The configured local Basic operator has
+both inspection and recovery authorities. JWT mode can grant only
+`payment.outbox.handoff-inspection` to a read-only external identity.
 
 Results are ordered by handoff id and bounded to 50 rows by default or 100 rows
 at most. Pass the returned `nextCursor` as the next request's exclusive

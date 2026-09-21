@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.3.0
+  version: 0.4.0
   description: Contract sketch for the account, payment, and transaction services.
 servers:
   - url: http://localhost:8081
@@ -98,6 +98,7 @@ paths:
         Restricted operator command. The authenticated principal is recorded as
         the audit actor. An exact command replay returns the original receipt.
         The application requires the request to arrive through its HTTPS connector.
+        In JWT mode the token requires payment.outbox.recovery scope.
         Business-level not-found, ineligible, and command-conflict rejections are
         journaled using only requested event id, fixed code, and server timestamp.
       servers:
@@ -105,6 +106,7 @@ paths:
           description: Payment Service with its HTTPS connector enabled
       security:
         - recoveryOperator: []
+        - operatorBearer: []
       parameters:
         - name: eventId
           in: path
@@ -138,7 +140,7 @@ paths:
         "400":
           description: Event id, command key, or reason failed validation; not business-audited
         "401":
-          description: Recovery operator credentials are missing or invalid; not business-audited
+          description: Active-mode Basic credentials or Bearer token are missing or invalid; not business-audited
         "403":
           description: Authenticated identity lacks recovery authority; not business-audited
         "404":
@@ -168,12 +170,14 @@ paths:
         handoffs. Results contain only safe handoff metadata and use an exclusive
         primary-key cursor. A handoff proves local database staging only; it is
         not a Kafka DLT publication, external-delivery acknowledgement, or
-        downstream consumer receipt.
+        downstream consumer receipt. In JWT mode the token requires
+        payment.outbox.handoff-inspection scope.
       servers:
         - url: https://localhost:8082
           description: Payment Service with its HTTPS connector enabled
       security:
         - handoffInspectionOperator: []
+        - operatorBearer: []
       parameters:
         - name: afterId
           in: query
@@ -249,16 +253,27 @@ components:
       type: http
       scheme: basic
       description: >-
-        Dedicated operator credential supplied through runtime configuration.
-        The Spring Boot TLS connector must be enabled before credentials activate.
+        Local Basic operator credential selected only in basic mode and supplied
+        through runtime configuration. The Spring Boot TLS connector must be
+        enabled before credentials activate.
     handoffInspectionOperator:
       type: http
       scheme: basic
       description: >-
         Configured local Basic operator credential with
         PAYMENT_OUTBOX_HANDOFF_INSPECTION authority. The current operator also
-        has recovery authority; external identity integration can separate the
-        roles later.
+        has recovery authority; JWT mode can separate the roles through exact
+        scopes.
+    operatorBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        External RS256 JWT selected instead of Basic authentication. Tokens are
+        issuer-, audience-, and subject-validated, require iat and exp, and honor
+        nbf when present with 60 seconds of clock-skew tolerance. Standard scope
+        and scp claims are accepted. Only the documented payment.outbox.recovery
+        and payment.outbox.handoff-inspection scopes map to operator authorities.
   schemas:
     Account:
       type: object

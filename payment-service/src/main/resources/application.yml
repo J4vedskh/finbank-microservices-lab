@@ -20,6 +20,12 @@ management:
         include: "*"
 payment:
   recovery:
+    authentication:
+      mode: ${PAYMENT_RECOVERY_AUTHENTICATION_MODE:basic}
+      external-jwt:
+        issuer-uri: ${PAYMENT_RECOVERY_EXTERNAL_JWT_ISSUER_URI:}
+        jwk-set-uri: ${PAYMENT_RECOVERY_EXTERNAL_JWT_JWK_SET_URI:}
+        audience: ${PAYMENT_RECOVERY_EXTERNAL_JWT_AUDIENCE:}
     operator:
       username: ${PAYMENT_RECOVERY_OPERATOR_USERNAME:}
       password-hash: ${PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH:}
@@ -38,3 +44,4 @@ payment:
       cleanup-delay-ms: 86400000
 server:
   port: 8082
+  forward-headers-strategy: none

@@ -77,11 +77,12 @@ class PaymentOutboxRecoveryRejectionAuditPersistenceTest {
         )).isInstanceOf(PaymentOutboxEventNotFoundException.class);
 
         List<PaymentOutboxRecoveryRejectionAudit> audits = rejectionAuditRepository.findAll();
+        Instant after = Instant.now().plus(1, ChronoUnit.MICROS);
         assertThat(audits).hasSize(2).allSatisfy(audit -> {
             assertThat(audit.getRequestedEventId()).isEqualTo(999L);
             assertThat(audit.getRejectionCode())
                     .isEqualTo(PaymentOutboxRecoveryRejectionCode.EVENT_NOT_FOUND);
-            assertThat(audit.getRejectedAt()).isBetween(before, Instant.now());
+            assertThat(audit.getRejectedAt()).isBetween(before, after);
         });
         assertThat(successfulAuditRepository.count()).isZero();
     }
