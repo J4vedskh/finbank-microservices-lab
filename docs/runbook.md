@@ -41,11 +41,10 @@ PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH=<Spring-style {bcrypt} hash>
 
 In Basic mode, when both credential values are blank, no fallback operator
 exists and both routes return HTTP `401`. Supplying only one value, an invalid
-username, plaintext password, a non-BCrypt value, or credentials without
-`server.ssl.enabled=true` stops startup instead of weakening access. Configure
-the standard Spring Boot `server.ssl.*` keystore settings through the deployment
-secret mechanism before activating the operator. Keep the raw client password
-in an approved secret store, not in repository files or shell history.
+username, plaintext password, a non-BCrypt value, or credentials without a valid
+operator transport stops startup instead of weakening access. Keep the raw
+client password in an approved secret store, not in repository files or shell
+history.
 
 External JWT mode disables HTTP Basic and requires all three values:
 
@@ -73,20 +72,52 @@ weaken authentication. Bearer tokens must never be stored, logged, or copied
 into recovery reasons. IdP provisioning, JWK availability and rotation, and
 real-token end-to-end validation remain deployment responsibilities.
 
-Both modes require `server.ssl.enabled=true` and a directly secure servlet
-request. The application does not enforce loopback-only exposure or provide a
-TLS connector. It does not trust `Forwarded` or `X-Forwarded-*` headers, so
-proxy-only TLS termination remains unsupported. The service pins
-`server.forward-headers-strategy=none` and refuses to start an active operator
-when that strategy is overridden. The repository does not configure a separate
-clear-HTTP connector; the security filter redirects only an insecure servlet
-request that reaches it.
-Network exposure and TLS material remain deployment responsibilities. Proxy-only
-TLS termination and forwarded-scheme trust are not supported yet. Real IdP/JWK
-availability, rotation, and token interoperability remain unqualified. Public
-payment routes plus health, info, and Prometheus endpoints remain allowlisted.
-Apart from the framework `/error` dispatch, unlisted payment-service paths are
-denied.
+### Operator Transport
+
+Direct transport is the default:
+
+```text
+PAYMENT_RECOVERY_TRANSPORT_MODE=direct
+```
+
+An active operator then requires `server.ssl.enabled=true` and a request through
+the application HTTPS connector. Trusted-proxy addresses must be empty. Configure
+the standard Spring Boot `server.ssl.*` keystore settings through the deployment
+secret mechanism; this repository does not provide a TLS connector.
+
+For deliberate TLS termination at one or more reverse proxies, configure exact
+immediate-peer addresses:
+
+```text
+PAYMENT_RECOVERY_TRANSPORT_MODE=trusted-proxy
+PAYMENT_RECOVERY_TRUSTED_PROXY_ADDRESSES=10.20.30.40,2001:db8::40
+```
+
+These values are exact numeric IPv4 or IPv6 literals—not DNS names or CIDRs.
+Duplicates, blanks, IPv4-mapped IPv6 aliases, and ambiguous representations stop
+startup. Application SSL is optional in this mode, and direct HTTPS still works.
+Only `/internal/payment-outbox/**` can be presented as secure by the proxy filter.
+The immediate socket peer must match the configured list, there must be exactly
+one `X-Forwarded-Proto: https` header value, and no `Forwarded` header may be
+present. Missing, non-HTTPS, repeated, comma-separated, or conflicting values
+fail the secure-channel check before authentication. `X-Forwarded-For`,
+`X-Forwarded-Host`, and `X-Forwarded-Port` never establish trust.
+
+Keep `server.forward-headers-strategy=none`; an active operator refuses startup
+if that setting is changed. The reverse proxy must:
+
+1. Strip every client-supplied `Forwarded` and `X-Forwarded-*` header.
+2. Add one `X-Forwarded-Proto: https` only after its own TLS handshake succeeds.
+3. Be the only network peer allowed to reach the clear-HTTP service listener.
+4. Preserve its actual source address so the service sees the configured peer.
+
+Clients must never manufacture the trusted protocol header. Address matching
+cannot protect a deployment whose trusted proxy forwards an attacker's header.
+Network exposure, certificates, and proxy rules remain deployment
+responsibilities. Real IdP/JWK availability, rotation, and token interoperability
+remain unqualified. Public payment routes plus health, info, and Prometheus
+endpoints remain allowlisted. Apart from the framework `/error` dispatch,
+unlisted payment-service paths are denied.
 
 Successful recovery reasons are retained in the successful-command audit table.
 Never include credentials, tokens, event payloads, personal data, or secrets.
@@ -116,8 +147,10 @@ curl --user "<operator-username>" \
   "https://localhost:8082/internal/payment-outbox/dead-letter-handoffs?limit=50"
 ```
 
-That example is for Basic mode. In JWT mode, use the approved identity client to
-send an `Authorization: Bearer` token with
+That localhost example is for Basic authentication over direct application TLS.
+In a trusted-proxy deployment, call the proxy's externally managed HTTPS URL and
+let the proxy add the protocol header. In JWT mode, use the approved identity
+client to send an `Authorization: Bearer` token with
 `payment.outbox.handoff-inspection`; do not paste tokens into shell history.
 
 The response contains only handoff id, event id, exhaustion sequence and time,

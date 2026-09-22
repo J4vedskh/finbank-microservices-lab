@@ -181,12 +181,17 @@ Public payment routes plus health, info, and monitoring paths remain
 allowlisted. Apart from the framework `/error` dispatch, unlisted
 payment-service paths are denied.
 
-Both modes require `server.ssl.enabled=true` and a directly secure request. The
-application relies on a Spring Boot TLS connector configured through external
-`server.ssl.*` settings and does not add a separate clear-HTTP connector.
-`server.forward-headers-strategy` is pinned to `none`; an active operator refuses
-startup if it is overridden. Proxy-only TLS termination and forwarded-scheme
-trust are not supported yet.
+Transport defaults to direct TLS: an active Basic or JWT operator then requires
+`server.ssl.enabled=true` and a secure servlet request. Opt-in trusted-proxy mode
+also accepts clear-HTTP requests to the two operator routes when the immediate
+peer exactly matches a configured numeric IP, there is exactly one
+`X-Forwarded-Proto: https` value, and no `Forwarded` header is present. The
+route-scoped filter ignores forwarding data for public and monitoring routes,
+never derives trust from `X-Forwarded-For`, and still accepts direct HTTPS.
+`server.forward-headers-strategy` remains pinned to `none`; an active operator
+refuses startup if that setting is changed.
+The proxy must strip client forwarding headers, set the canonical protocol value
+after TLS termination, and be the only network peer able to reach the backend.
 Network exposure, TLS material, IdP/JWK availability and rotation, and real-token
 end-to-end validation remain deployment responsibilities. Immutability is not a
 database permission boundary, and external dead-letter delivery plus MySQL
@@ -269,5 +274,6 @@ schema-migration qualification remain separate work; relying on
 - [x] Add an atomic, payload-free local dead-letter handoff for terminal publication cycles.
 - [x] Add HTTPS-only, bounded, safe operator inspection for retained handoffs.
 - [x] Add mutually exclusive external RS256 JWT identity with issuer, audience, subject, and scope validation.
-- Add trusted-proxy support, independently available delivery, and MySQL qualification.
+- [x] Add route-scoped trusted-proxy HTTPS scheme support for operator routes.
+- Add independently available delivery and MySQL qualification.
 - Add dashboard panels for retry count, duplicate events, and stuck payments.

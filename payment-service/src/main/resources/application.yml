@@ -26,6 +26,9 @@ payment:
         issuer-uri: ${PAYMENT_RECOVERY_EXTERNAL_JWT_ISSUER_URI:}
         jwk-set-uri: ${PAYMENT_RECOVERY_EXTERNAL_JWT_JWK_SET_URI:}
         audience: ${PAYMENT_RECOVERY_EXTERNAL_JWT_AUDIENCE:}
+    transport:
+      mode: ${PAYMENT_RECOVERY_TRANSPORT_MODE:direct}
+      trusted-proxy-addresses: ${PAYMENT_RECOVERY_TRUSTED_PROXY_ADDRESSES:}
     operator:
       username: ${PAYMENT_RECOVERY_OPERATOR_USERNAME:}
       password-hash: ${PAYMENT_RECOVERY_OPERATOR_PASSWORD_HASH:}

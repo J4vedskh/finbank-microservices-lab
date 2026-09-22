@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.4.0
+  version: 0.5.0
   description: Contract sketch for the account, payment, and transaction services.
 servers:
   - url: http://localhost:8081
@@ -97,13 +97,15 @@ paths:
       description: >-
         Restricted operator command. The authenticated principal is recorded as
         the audit actor. An exact command replay returns the original receipt.
-        The application requires the request to arrive through its HTTPS connector.
+        The request must arrive through direct application TLS or the explicit,
+        exact-address trusted-proxy transport boundary. Forwarding metadata is
+        deployment-supplied and is not a client-controlled API parameter.
         In JWT mode the token requires payment.outbox.recovery scope.
         Business-level not-found, ineligible, and command-conflict rejections are
         journaled using only requested event id, fixed code, and server timestamp.
       servers:
         - url: https://localhost:8082
-          description: Payment Service with its HTTPS connector enabled
+          description: Payment Service at its secure operator boundary
       security:
         - recoveryOperator: []
         - operatorBearer: []
@@ -171,10 +173,12 @@ paths:
         primary-key cursor. A handoff proves local database staging only; it is
         not a Kafka DLT publication, external-delivery acknowledgement, or
         downstream consumer receipt. In JWT mode the token requires
-        payment.outbox.handoff-inspection scope.
+        payment.outbox.handoff-inspection scope. The request must arrive through
+        direct application TLS or the explicit, exact-address trusted-proxy
+        transport boundary.
       servers:
         - url: https://localhost:8082
-          description: Payment Service with its HTTPS connector enabled
+          description: Payment Service at its secure operator boundary
       security:
         - handoffInspectionOperator: []
         - operatorBearer: []
@@ -254,8 +258,8 @@ components:
       scheme: basic
       description: >-
         Local Basic operator credential selected only in basic mode and supplied
-        through runtime configuration. The Spring Boot TLS connector must be
-        enabled before credentials activate.
+        through runtime configuration. Activation requires either the direct TLS
+        connector or the explicit trusted-proxy transport mode.
     handoffInspectionOperator:
       type: http
       scheme: basic

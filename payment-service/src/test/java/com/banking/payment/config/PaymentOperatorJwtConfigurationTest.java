@@ -27,6 +27,7 @@ class PaymentOperatorJwtConfigurationTest {
     void jwtMode_createsNoLocalFallbackUserAndRejectsMixedBasicCredentials() {
         UserDetailsService users = configuration.paymentRecoveryUsers(
                 jwtAuthentication(),
+                directTransport(),
                 "",
                 "",
                 true,
@@ -37,6 +38,7 @@ class PaymentOperatorJwtConfigurationTest {
                 .isInstanceOf(UsernameNotFoundException.class);
         assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
                 jwtAuthentication(),
+                directTransport(),
                 "local-operator",
                 "{bcrypt}$2a$10$" + "a".repeat(53),
                 true,
@@ -59,6 +61,7 @@ class PaymentOperatorJwtConfigurationTest {
 
         assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
                 properties,
+                directTransport(),
                 "",
                 "",
                 false,
@@ -68,17 +71,19 @@ class PaymentOperatorJwtConfigurationTest {
     }
 
     @Test
-    void jwtMode_requiresDirectTlsAndCompleteHttpsSettings() {
+    void jwtMode_requiresSecureTransportAndCompleteHttpsSettings() {
         assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
                 jwtAuthentication(),
+                directTransport(),
                 "",
                 "",
                 false,
                 "none"
         )).isInstanceOf(IllegalStateException.class)
-                .hasMessage("JWT operator authentication requires server SSL to be enabled");
+                .hasMessage("Direct operator transport requires server SSL to be enabled");
         assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
                 jwtAuthentication(),
+                directTransport(),
                 "",
                 "",
                 true,
@@ -103,14 +108,42 @@ class PaymentOperatorJwtConfigurationTest {
     void jwtDecoder_isRs256NimbusDecoderWithoutStartupNetworkDiscovery() {
         assertThat(configuration.paymentOperatorJwtDecoder(
                 jwtAuthentication(),
-                true
+                directTransport(),
+                true,
+                "none"
+        )).isInstanceOf(NimbusJwtDecoder.class);
+    }
+
+    @Test
+    void trustedProxyModeDoesNotRequireAnApplicationTlsConnector() {
+        UserDetailsService users = configuration.paymentRecoveryUsers(
+                jwtAuthentication(),
+                trustedProxyTransport(),
+                "",
+                "",
+                false,
+                "none"
+        );
+
+        assertThatThrownBy(() -> users.loadUserByUsername("external-operator"))
+                .isInstanceOf(UsernameNotFoundException.class);
+        assertThat(configuration.paymentOperatorJwtDecoder(
+                jwtAuthentication(),
+                trustedProxyTransport(),
+                false,
+                "none"
         )).isInstanceOf(NimbusJwtDecoder.class);
     }
 
     @Test
     void jwtValidator_requiresIssuerAudienceTimeAndBoundedVisibleSubject() {
         OAuth2TokenValidator<Jwt> validator = configuration
-                .paymentOperatorJwtValidator(jwtAuthentication(), true);
+                .paymentOperatorJwtValidator(
+                        jwtAuthentication(),
+                        directTransport(),
+                        true,
+                        "none"
+                );
 
         assertThat(validator.validate(jwt(
                 ISSUER,
@@ -280,6 +313,7 @@ class PaymentOperatorJwtConfigurationTest {
                 );
         assertThatThrownBy(() -> configuration.paymentRecoveryUsers(
                 properties,
+                directTransport(),
                 "",
                 "",
                 true,
@@ -295,6 +329,24 @@ class PaymentOperatorJwtConfigurationTest {
                         ISSUER,
                         JWK_SET,
                         AUDIENCE
+                )
+        );
+    }
+
+    private PaymentOperatorTransportPolicy directTransport() {
+        return new PaymentOperatorTransportPolicy(
+                new PaymentOperatorTransportProperties(
+                        PaymentOperatorTransportProperties.Mode.DIRECT,
+                        List.of()
+                )
+        );
+    }
+
+    private PaymentOperatorTransportPolicy trustedProxyTransport() {
+        return new PaymentOperatorTransportPolicy(
+                new PaymentOperatorTransportProperties(
+                        PaymentOperatorTransportProperties.Mode.TRUSTED_PROXY,
+                        List.of("10.20.30.40")
                 )
         );
     }

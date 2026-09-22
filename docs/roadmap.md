@@ -36,7 +36,7 @@ gantt
 | 9 | Completed: add a fail-closed HTTP Basic operator recovery adapter |
 | 10 | Completed: journal business-level recovery rejections without sensitive request data |
 | 11 | Completed: add mutually exclusive external JWT identity for operator routes |
-| 12 | Add explicit trusted-proxy HTTPS scheme support |
+| 12 | Completed: add route-scoped, exact-address trusted-proxy HTTPS scheme support |
 | 13 | Completed: add opt-in bounded retention for published outbox and recovery-audit data |
 | 14 | Completed: persist an atomic local dead-letter handoff for each terminal publication cycle |
 | 15 | Completed: add HTTPS-only bounded operator inspection for retained handoffs |
