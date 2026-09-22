@@ -78,9 +78,38 @@ Scopes may use the standard space-delimited `scope` claim or `scp` collection.
 Unknown scopes are ignored. A token without the route's exact scope receives
 `403`; an invalid issuer, audience, time window, signature, or subject receives
 `401`. Bearer tokens are never persisted or logged; only their validated `sub`
-is retained as the recovery audit actor. Both modes still require the servlet
-request to be directly secure. Forwarded scheme headers and proxy-only TLS
-termination remain untrusted.
+is retained as the recovery audit actor. Authentication mode is independent of
+the operator transport mode described below.
+
+### Operator Transport Modes
+
+Operator transport defaults to `direct`. An active Basic or JWT operator then
+requires `server.ssl.enabled=true`, and the request must arrive through the
+application's HTTPS connector. Arbitrary `Forwarded` and `X-Forwarded-*`
+headers do not satisfy this boundary.
+
+An explicit `trusted-proxy` mode supports TLS termination at a reverse proxy:
+
+```text
+PAYMENT_RECOVERY_TRANSPORT_MODE=trusted-proxy
+PAYMENT_RECOVERY_TRUSTED_PROXY_ADDRESSES=10.20.30.40,2001:db8::40
+```
+
+Only the two `/internal/payment-outbox/**` operator routes use this setting. An
+insecure servlet request is treated as secure only when its immediate socket
+peer exactly matches one configured numeric IPv4 or IPv6 address, it carries
+one unambiguous `X-Forwarded-Proto: https` value, and it carries no `Forwarded`
+header. Hostnames, CIDRs, duplicate addresses, comma-separated or repeated
+protocol values, and IPv4-mapped IPv6 aliases are rejected. `X-Forwarded-For`,
+`X-Forwarded-Host`, and `X-Forwarded-Port` are never used to establish trust.
+
+`server.forward-headers-strategy` stays `none`; changing that setting stops an
+active operator instead of enabling application-wide forwarding. The
+trusted proxy must strip all client-supplied forwarding headers, add its own
+single protocol header only after successful TLS, and be the only network peer
+allowed to reach the clear-HTTP backend. The application cannot repair a proxy
+that forwards attacker-controlled headers. Direct HTTPS remains valid in
+trusted-proxy mode.
 
 ### Restricted Outbox Recovery
 
@@ -132,11 +161,10 @@ rejection records. If the journal cannot be written, the original `404`/`409`
 is withheld and the endpoint returns a generic `503` instead.
 Responses never include the raw key, its digest, the stored event payload, the
 reason, or persistence details. Neither Basic nor Bearer authentication replaces
-transport security. The security filter rejects an insecure servlet request,
-and the active operator mode cannot activate unless `server.ssl.enabled` is
-true. A correctly configured Spring Boot TLS connector is therefore required;
-this repository does not add a separate clear-HTTP connector, and proxy-only TLS
-termination is not yet supported.
+transport security. Before authentication, the security filter rejects requests
+that satisfy neither the direct-TLS boundary nor the explicit trusted-proxy
+boundary. This repository does not add a TLS connector, clear-HTTP connector,
+reverse proxy, firewall rule, or certificate.
 
 ### Restricted Dead-Letter Handoff Inspection
 

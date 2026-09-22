@@ -34,6 +34,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.channel.ChannelProcessingFilter;
 
 import java.io.IOException;
 import java.net.URI;
@@ -45,7 +46,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Configuration
-@EnableConfigurationProperties(PaymentOperatorAuthenticationProperties.class)
+@EnableConfigurationProperties({
+        PaymentOperatorAuthenticationProperties.class,
+        PaymentOperatorTransportProperties.class
+})
 public class PaymentRecoverySecurityConfiguration {
     public static final String RECOVERY_AUTHORITY = "PAYMENT_OUTBOX_RECOVERY";
     public static final String HANDOFF_INSPECTION_AUTHORITY =
@@ -61,9 +65,14 @@ public class PaymentRecoverySecurityConfiguration {
     SecurityFilterChain paymentSecurityFilterChain(
             HttpSecurity http,
             PaymentOperatorAuthenticationProperties authenticationProperties,
+            PaymentOperatorTransportPolicy transportPolicy,
             ApplicationContext applicationContext
     ) throws Exception {
         http
+                .addFilterBefore(
+                        new PaymentOperatorTrustedProxyHttpsFilter(transportPolicy),
+                        ChannelProcessingFilter.class
+                )
                 .csrf(csrf -> csrf.disable())
                 .requestCache(cache -> cache.disable())
                 .requiresChannel(channels -> channels
@@ -122,11 +131,16 @@ public class PaymentRecoverySecurityConfiguration {
     )
     JwtDecoder paymentOperatorJwtDecoder(
             PaymentOperatorAuthenticationProperties authenticationProperties,
-            @Value("${server.ssl.enabled:false}") boolean serverSslEnabled
+            PaymentOperatorTransportPolicy transportPolicy,
+            @Value("${server.ssl.enabled:false}") boolean serverSslEnabled,
+            @Value("${server.forward-headers-strategy:none}")
+            String forwardHeadersStrategy
     ) {
         ValidatedJwtSettings settings = requireJwtSettings(
                 authenticationProperties,
-                serverSslEnabled
+                transportPolicy,
+                serverSslEnabled,
+                forwardHeadersStrategy
         );
         NimbusJwtDecoder decoder = NimbusJwtDecoder
                 .withJwkSetUri(settings.jwkSetUri())
@@ -142,8 +156,16 @@ public class PaymentRecoverySecurityConfiguration {
     }
 
     @Bean
+    PaymentOperatorTransportPolicy paymentOperatorTransportPolicy(
+            PaymentOperatorTransportProperties transportProperties
+    ) {
+        return new PaymentOperatorTransportPolicy(transportProperties);
+    }
+
+    @Bean
     UserDetailsService paymentRecoveryUsers(
             PaymentOperatorAuthenticationProperties authenticationProperties,
+            PaymentOperatorTransportPolicy transportPolicy,
             @Value("${payment.recovery.operator.username:}") String username,
             @Value("${payment.recovery.operator.password-hash:}") String passwordHash,
             @Value("${server.ssl.enabled:false}") boolean serverSslEnabled,
@@ -156,8 +178,12 @@ public class PaymentRecoverySecurityConfiguration {
                         "Local operator credentials must be blank in JWT mode"
                 );
             }
-            requireForwardHeadersDisabled(forwardHeadersStrategy);
-            requireJwtSettings(authenticationProperties, serverSslEnabled);
+            requireJwtSettings(
+                    authenticationProperties,
+                    transportPolicy,
+                    serverSslEnabled,
+                    forwardHeadersStrategy
+            );
             return new InMemoryUserDetailsManager();
         }
         rejectJwtSettingsInBasicMode(authenticationProperties.externalJwt());
@@ -171,12 +197,10 @@ public class PaymentRecoverySecurityConfiguration {
         if (!usernameConfigured) {
             return new InMemoryUserDetailsManager();
         }
-        requireForwardHeadersDisabled(forwardHeadersStrategy);
-        if (!serverSslEnabled) {
-            throw new IllegalStateException(
-                    "Recovery operator credentials require server SSL to be enabled"
-            );
-        }
+        transportPolicy.requireActiveOperatorTransport(
+                serverSslEnabled,
+                forwardHeadersStrategy
+        );
 
         String normalizedUsername = username.strip();
         if (!isValidUsername(normalizedUsername)) {
@@ -227,11 +251,15 @@ public class PaymentRecoverySecurityConfiguration {
 
     OAuth2TokenValidator<Jwt> paymentOperatorJwtValidator(
             PaymentOperatorAuthenticationProperties authenticationProperties,
-            boolean serverSslEnabled
+            PaymentOperatorTransportPolicy transportPolicy,
+            boolean serverSslEnabled,
+            String forwardHeadersStrategy
     ) {
         return paymentOperatorJwtValidator(requireJwtSettings(
                 authenticationProperties,
-                serverSslEnabled
+                transportPolicy,
+                serverSslEnabled,
+                forwardHeadersStrategy
         ));
     }
 
@@ -272,13 +300,14 @@ public class PaymentRecoverySecurityConfiguration {
 
     private ValidatedJwtSettings requireJwtSettings(
             PaymentOperatorAuthenticationProperties authenticationProperties,
-            boolean serverSslEnabled
+            PaymentOperatorTransportPolicy transportPolicy,
+            boolean serverSslEnabled,
+            String forwardHeadersStrategy
     ) {
-        if (!serverSslEnabled) {
-            throw new IllegalStateException(
-                    "JWT operator authentication requires server SSL to be enabled"
-            );
-        }
+        transportPolicy.requireActiveOperatorTransport(
+                serverSslEnabled,
+                forwardHeadersStrategy
+        );
         PaymentOperatorAuthenticationProperties.ExternalJwt externalJwt =
                 authenticationProperties.externalJwt();
         String issuerUri = requireHttpsUri(externalJwt.issuerUri(), "issuer URI");
@@ -332,14 +361,6 @@ public class PaymentRecoverySecurityConfiguration {
                 description,
                 null
         ));
-    }
-
-    private void requireForwardHeadersDisabled(String strategy) {
-        if (strategy == null || !"none".equalsIgnoreCase(strategy.strip())) {
-            throw new IllegalStateException(
-                    "Operator authentication requires server.forward-headers-strategy=none"
-            );
-        }
     }
 
     private void bearerAuthenticationFailure(

@@ -56,12 +56,14 @@ database commit can cause a repeat publication. The transaction service's
 payment-id uniqueness makes that repeat safe. Bounded exponential retry,
 terminal relay exhaustion, and an internal row-locked, audited, idempotent
 recovery command are implemented. A fail-closed operator adapter selects either
-local HTTP Basic or external RS256 JWT authentication and accepts requests only
-through an enabled HTTPS connector. The Basic username or validated JWT `sub`
-becomes the successful-command audit actor. Known business rejections commit a
-separate minimal journal containing only requested event id, fixed code, and
-server time. Trusted-proxy support, real-IdP qualification, external dead-letter
-delivery, and MySQL lock and retention qualification remain tracked in the
+local HTTP Basic or external RS256 JWT authentication. Its transport gate accepts
+either direct application TLS or an explicitly configured, exact-address trusted
+proxy that supplies one canonical HTTPS protocol header for operator routes only;
+global forwarded-header processing remains disabled. The Basic username or
+validated JWT `sub` becomes the successful-command audit actor. Known business
+rejections commit a separate minimal journal containing only requested event id,
+fixed code, and server time. Real-IdP qualification, external dead-letter delivery,
+and MySQL lock and retention qualification remain tracked in the
 [resilience guide](resilience.md).
 
 Each committed terminal publication cycle also appends an immutable local
