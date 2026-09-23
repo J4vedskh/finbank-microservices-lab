@@ -48,7 +48,7 @@ flowchart LR
 | Distributed systems | Kafka-backed payment event flow |
 | DevOps | Docker Compose, Kubernetes manifests, GitHub Actions |
 | Observability | Actuator metrics, Prometheus, Grafana, Jaeger roadmap |
-| Documentation | Live architecture portal with diagrams and runbooks |
+| Documentation | Live architecture portal, diagrams, runbooks, and a read-only Swagger API explorer |
 
 ## Current Status
 
@@ -56,4 +56,5 @@ This repository starts as a working scaffold and grows through daily, reviewable
 pull requests. Each change is intended to be small enough to inspect and useful
 enough to improve the project.
 
-Follow the visible delivery history in the [progress log](progress-log.md).
+Browse the current contract in the [API Explorer](api-explorer.md) and follow
+the visible delivery history in the [progress log](progress-log.md).

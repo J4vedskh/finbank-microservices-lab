@@ -1,0 +1,2 @@
+# Vendored Swagger UI files are checksum-verified and must remain byte-identical.
+docs/assets/swagger-ui/* -text

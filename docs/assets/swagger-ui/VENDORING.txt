@@ -1,0 +1,19 @@
+Swagger UI 5.32.11
+
+Purpose:
+  Local, reproducible assets for the read-only MkDocs API Explorer.
+
+Source:
+  https://github.com/swagger-api/swagger-ui/tree/v5.32.11
+
+Vendored files:
+  dist/swagger-ui-bundle.js
+  dist/swagger-ui.css
+  LICENSE
+  NOTICE
+
+Integrity:
+  SHA-256 values are stored in SHA256SUMS and enforced by mkdocs_hooks.py.
+
+License:
+  Apache License 2.0. See LICENSE.txt and NOTICE.txt in this directory.

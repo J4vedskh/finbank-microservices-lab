@@ -51,4 +51,6 @@ mkdocs build --strict
 ```
 
 The docs use Material for MkDocs and Mermaid diagrams so the architecture stays
-versioned next to the code.
+versioned next to the code. A locally vendored, read-only Swagger UI renders a
+credential-free public projection generated from the canonical OpenAPI contract,
+and the strict docs build validates the contract and viewer assets offline.

@@ -6,6 +6,7 @@ repo_name: J4vedskh/finbank-microservices-lab
 theme:
   name: material
   language: en
+  font: false
   features:
     - navigation.tabs
     - navigation.sections
@@ -26,15 +27,20 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+hooks:
+  - mkdocs_hooks.py
 nav:
   - Overview: index.md
   - Architecture: architecture.md
   - Observability: observability.md
   - Resilience: resilience.md
   - API Reference: api-reference.md
+  - API Explorer: api-explorer.md
   - Delivery: delivery.md
   - Progress Log: progress-log.md
   - Runbook: runbook.md
   - Roadmap: roadmap.md
 extra_css:
   - stylesheets/extra.css
+extra_javascript:
+  - javascripts/api-explorer.js

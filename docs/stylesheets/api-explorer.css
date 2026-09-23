@@ -1,0 +1,31 @@
+#swagger-ui {
+  min-height: 24rem;
+  margin-top: 1.5rem;
+  color: #263238;
+  background: #fff;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+#swagger-ui .swagger-ui .info {
+  margin: 1.5rem 0;
+}
+
+#swagger-ui .swagger-ui .info .title {
+  font-family: inherit;
+}
+
+#swagger-ui .swagger-ui .auth-wrapper,
+#swagger-ui .swagger-ui .authorization__btn,
+#swagger-ui .swagger-ui .btn.authorize,
+#swagger-ui .swagger-ui .execute-wrapper,
+#swagger-ui .swagger-ui .try-out {
+  display: none !important;
+}
+
+#swagger-ui .swagger-ui .scheme-container {
+  box-shadow: none;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
