@@ -45,12 +45,13 @@ flowchart TD
 | 2026-09-18 | Handoff inspection | Added an HTTPS-only, inspection-authority-protected GET route with bounded keyset pagination and scalar safe-field projections that never load source payload or payment/account data. | `mvn -T 1C clean test` |
 | 2026-09-21 | External operator identity | Added mutually exclusive Basic/JWT authentication, RS256 issuer/audience/time/subject validation, exact recovery and inspection scope mapping, safe Bearer failures, and JWT-subject audit attribution. | `mvn -T 1C clean test` |
 | 2026-09-22 | Trusted proxy transport | Added opt-in, operator-route-only proxy TLS recognition using exact immediate-peer IPs and one canonical HTTPS protocol header, while preserving direct TLS and rejecting ambiguous or global forwarding. | `mvn -T 1C clean test` |
+| 2026-09-23 | API Explorer | Added a locally vendored, read-only Swagger UI using a generated credential-free public projection of the canonical contract, corrected per-service server mappings, added stable operation IDs, and made strict docs builds validate OpenAPI semantics and viewer integrity offline. | `mkdocs build --strict` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add Swagger UI backed by the existing OpenAPI contract. |
+| Backend | Expand OpenAPI response examples and remaining schema detail. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

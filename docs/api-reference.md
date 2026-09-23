@@ -1,12 +1,17 @@
 # API Reference
 
-The services currently expose compact REST endpoints for account, payment, and
-transaction workflows. The API surface will grow with request validation,
-OpenAPI specs, examples, and generated reference pages.
+The services expose compact REST endpoints for account, payment, and transaction
+workflows. The canonical aggregate contract lives at
+[`docs/api/openapi.yaml`](api/openapi.yaml). The
+[read-only API Explorer](api-explorer.md) renders a generated public projection
+that omits internal operator paths and every authentication scheme while keeping
+the raw canonical contract available for engineering review.
 
-The first OpenAPI contract sketch lives at
-[`docs/api/openapi.yaml`](api/openapi.yaml). It documents the current scaffold
-and gives future work a stable place to add examples, validation responses, and
+Every strict documentation build semantically validates the OpenAPI 3.0.3 file,
+unique operation IDs, per-service local server mappings, operator security
+alternatives, vendored Swagger UI checksums, and generated explorer assets. The
+viewer specification has no credential model and cannot submit requests; the
+canonical YAML remains the source of truth for future response examples and
 contract-test coverage.
 
 ## Account Service
@@ -199,11 +204,12 @@ Base URL: `http://localhost:8083`
 | `GET` | `/transactions` | List transactions |
 | `GET` | `/transactions/account/{id}` | List transactions involving an account |
 
-## Contract Roadmap
+## Contract Delivery
 
 ```mermaid
 flowchart LR
     StaticDocs["Static endpoint docs"] --> OpenAPI["OpenAPI YAML"]
-    OpenAPI --> SwaggerUI["Swagger UI per service"]
+    OpenAPI --> Validation["Offline semantic validation"]
+    OpenAPI --> SwaggerUI["Read-only Swagger UI"]
     OpenAPI --> ContractTests["Contract tests in CI"]
 ```

@@ -1,15 +1,8 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.5.0
+  version: 0.6.0
   description: Contract sketch for the account, payment, and transaction services.
-servers:
-  - url: http://localhost:8081
-    description: Account Service
-  - url: http://localhost:8082
-    description: Payment Service
-  - url: http://localhost:8083
-    description: Transaction Service
 tags:
   - name: Accounts
   - name: Payments
@@ -17,7 +10,11 @@ tags:
   - name: Transactions
 paths:
   /accounts:
+    servers:
+      - url: http://localhost:8081
+        description: Account Service
     get:
+      operationId: listAccounts
       tags: [Accounts]
       summary: List accounts
       responses:
@@ -30,6 +27,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Account"
     post:
+      operationId: createAccount
       tags: [Accounts]
       summary: Create an account
       requestBody:
@@ -48,7 +46,11 @@ paths:
         "400":
           description: Customer name or opening balance failed validation
   /payments:
+    servers:
+      - url: http://localhost:8082
+        description: Payment Service
     get:
+      operationId: listPayments
       tags: [Payments]
       summary: List payments
       responses:
@@ -61,6 +63,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Payment"
     post:
+      operationId: createPayment
       tags: [Payments]
       summary: Create a payment and queue its event for publication
       parameters:
@@ -92,6 +95,7 @@ paths:
           description: Idempotency key was already used for a different payment
   /internal/payment-outbox/{eventId}/recovery:
     post:
+      operationId: recoverPaymentOutboxEvent
       tags: [Payment Operations]
       summary: Re-arm an exhausted payment outbox event
       description: >-
@@ -165,6 +169,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /internal/payment-outbox/dead-letter-handoffs:
     get:
+      operationId: listPaymentOutboxDeadLetterHandoffs
       tags: [Payment Operations]
       summary: Inspect retained local dead-letter handoffs
       description: >-
@@ -219,7 +224,11 @@ paths:
         "403":
           description: Authenticated identity lacks handoff-inspection authority
   /transactions:
+    servers:
+      - url: http://localhost:8083
+        description: Transaction Service
     get:
+      operationId: listTransactions
       tags: [Transactions]
       summary: List transactions
       responses:
@@ -232,7 +241,11 @@ paths:
                 items:
                   $ref: "#/components/schemas/Transaction"
   /transactions/account/{id}:
+    servers:
+      - url: http://localhost:8083
+        description: Transaction Service
     get:
+      operationId: listTransactionsByAccount
       tags: [Transactions]
       summary: List transactions involving one account
       parameters:

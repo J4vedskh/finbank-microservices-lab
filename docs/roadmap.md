@@ -41,7 +41,7 @@ gantt
 | 14 | Completed: persist an atomic local dead-letter handoff for each terminal publication cycle |
 | 15 | Completed: add HTTPS-only bounded operator inspection for retained handoffs |
 | 16 | Add independently available dead-letter delivery and MySQL qualification |
-| 17 | Add Swagger UI and expand OpenAPI documentation |
+| 17 | Completed: add a read-only Swagger UI and offline OpenAPI validation |
 | 18 | Add health probes and resource limits to Kubernetes manifests |
 | 19 | Add Prometheus dashboard documentation and screenshots |
 
