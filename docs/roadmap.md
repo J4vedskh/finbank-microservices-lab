@@ -44,6 +44,7 @@ gantt
 | 17 | Completed: add a read-only Swagger UI and offline OpenAPI validation |
 | 18 | Add health probes and resource limits to Kubernetes manifests |
 | 19 | Add Prometheus dashboard documentation and screenshots |
+| 20 | Completed: add validated synthetic response examples for every public API operation |
 
 ## Commit Standard
 

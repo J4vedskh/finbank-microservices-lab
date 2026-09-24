@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 from mkdocs.exceptions import PluginError
+from openapi_schema_validator import OAS30Validator
 from openapi_spec_validator import validate
 from openapi_spec_validator.readers import read_from_filename
 
@@ -80,6 +81,35 @@ VENDOR_FILES = {
     "swagger-ui-bundle.js",
     "swagger-ui.css",
 }
+SENSITIVE_EXAMPLE_KEYS = {
+    "actor",
+    "authorization",
+    "authorities",
+    "authority",
+    "basic",
+    "bearer",
+    "credential",
+    "credentials",
+    "eventkey",
+    "eventpayload",
+    "headers",
+    "idempotencykey",
+    "idempotencykeyhash",
+    "operator",
+    "password",
+    "payload",
+    "principal",
+    "reason",
+    "recoverykey",
+    "role",
+    "roles",
+    "scope",
+    "scopes",
+    "secret",
+    "token",
+    "topic",
+    "username",
+}
 
 
 def on_config(config: Any) -> Any:
@@ -88,6 +118,11 @@ def on_config(config: Any) -> Any:
     specification, base_uri = read_from_filename(str(SPEC_PATH))
     validate(specification, base_uri=base_uri)
     _validate_contract_invariants(specification)
+    _validate_response_examples(specification, required_paths=PUBLIC_PATHS)
+    public_specification = _create_public_specification(specification)
+    validate(public_specification)
+    _validate_public_projection(specification, public_specification)
+    _validate_response_examples(public_specification, required_paths=PUBLIC_PATHS)
     return config
 
 
@@ -96,6 +131,8 @@ def on_post_build(config: Any) -> None:
     specification, _ = read_from_filename(str(SPEC_PATH))
     public_specification = _create_public_specification(specification)
     validate(public_specification)
+    _validate_public_projection(specification, public_specification)
+    _validate_response_examples(public_specification, required_paths=PUBLIC_PATHS)
 
     public_spec_path = site_dir / "api" / "openapi-public.yaml"
     public_spec_path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +212,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.6.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.7.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -257,3 +294,177 @@ def _create_public_specification(specification: dict[str, Any]) -> dict[str, Any
             if method.lower() in HTTP_METHODS and "security" in operation:
                 raise PluginError("Public API projection must not contain operation security")
     return public_specification
+
+
+def _validate_response_examples(
+        specification: dict[str, Any],
+        required_paths: set[str]
+) -> None:
+    validator = OAS30Validator(
+        specification,
+        format_checker=OAS30Validator.FORMAT_CHECKER,
+    )
+    for path, path_item in specification.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method.lower() not in HTTP_METHODS:
+                continue
+            for status, response in operation.get("responses", {}).items():
+                response_has_json_example = False
+                response_has_json_representation = False
+                for media_type, media in response.get("content", {}).items():
+                    examples = _local_examples(media, method, path, status, media_type)
+                    schema = media.get("schema")
+                    if examples and schema is None:
+                        raise PluginError(
+                            f"{method.upper()} {path} {status} examples require a schema"
+                        )
+                    for name, value in examples:
+                        errors = list(validator.evolve(schema=schema).iter_errors(value))
+                        if errors:
+                            raise PluginError(
+                                f"{method.upper()} {path} {status} example {name} is invalid: "
+                                f"{errors[0].message}"
+                            )
+                        _validate_example_privacy(value, method, path, status, name)
+                    if _is_json_media_type(media_type):
+                        response_has_json_representation = True
+                        if examples:
+                            response_has_json_example = True
+                        if path in required_paths and str(status).startswith("2"):
+                            _validate_public_example_set(
+                                media,
+                                schema,
+                                method,
+                                path,
+                                status,
+                                media_type,
+                            )
+
+                if (
+                    path in required_paths
+                    and str(status).startswith("2")
+                    and response_has_json_representation
+                    and not response_has_json_example
+                ):
+                    raise PluginError(
+                        f"{method.upper()} {path} {status} requires a local JSON response example"
+                    )
+
+
+def _is_json_media_type(media_type: str) -> bool:
+    return media_type == "application/json" or (
+        media_type.startswith("application/") and media_type.endswith("+json")
+    )
+
+
+def _validate_public_example_set(
+        media: dict[str, Any],
+        schema: dict[str, Any] | None,
+        method: str,
+        path: str,
+        status: str,
+        media_type: str
+) -> None:
+    named_examples = media.get("examples")
+    if not isinstance(named_examples, dict) or not named_examples:
+        raise PluginError(
+            f"{method.upper()} {path} {status} {media_type} requires named examples"
+        )
+    values = [example.get("value") for example in named_examples.values()]
+    if schema is not None and schema.get("type") == "array":
+        if not any(value == [] for value in values):
+            raise PluginError(
+                f"{method.upper()} {path} {status} list examples require an empty result"
+            )
+        if not any(isinstance(value, list) and len(value) > 0 for value in values):
+            raise PluginError(
+                f"{method.upper()} {path} {status} list examples require a populated result"
+            )
+
+
+def _local_examples(
+        media: dict[str, Any],
+        method: str,
+        path: str,
+        status: str,
+        media_type: str
+) -> list[tuple[str, Any]]:
+    if "example" in media and "examples" in media:
+        raise PluginError(
+            f"{method.upper()} {path} {status} {media_type} cannot define both example and examples"
+        )
+    if "example" in media:
+        return [("example", media["example"])]
+
+    local_examples: list[tuple[str, Any]] = []
+    for name, example in media.get("examples", {}).items():
+        if "externalValue" in example or "value" not in example:
+            raise PluginError(
+                f"{method.upper()} {path} {status} example {name} must contain a local value"
+            )
+        local_examples.append((name, example["value"]))
+    return local_examples
+
+
+def _validate_example_privacy(
+        value: Any,
+        method: str,
+        path: str,
+        status: str,
+        name: str
+) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized_key = key.replace("-", "").replace("_", "").lower()
+            if normalized_key in SENSITIVE_EXAMPLE_KEYS:
+                raise PluginError(
+                    f"{method.upper()} {path} {status} example {name} exposes {key}"
+                )
+            if normalized_key == "customername" and (
+                not isinstance(child, str) or not child.startswith("Demo ")
+            ):
+                raise PluginError(
+                    f"{method.upper()} {path} {status} example {name} must use a synthetic customerName"
+                )
+            _validate_example_privacy(child, method, path, status, name)
+    elif isinstance(value, list):
+        for child in value:
+            _validate_example_privacy(child, method, path, status, name)
+
+
+def _validate_public_projection(
+        canonical: dict[str, Any],
+        public: dict[str, Any]
+) -> None:
+    for path in PUBLIC_PATHS:
+        for method in EXPECTED_OPERATIONS[path]:
+            if (
+                public["paths"][path][method].get("responses")
+                != canonical["paths"][path][method].get("responses")
+            ):
+                raise PluginError(
+                    f"Public projection changed {method.upper()} {path} responses"
+                )
+
+    referenced_schemas = _schema_references(public.get("paths", {}))
+    available_schemas = set(public.get("components", {}).get("schemas", {}))
+    missing_schemas = referenced_schemas - available_schemas
+    if missing_schemas:
+        raise PluginError(
+            "Public projection is missing schemas: " + ", ".join(sorted(missing_schemas))
+        )
+
+
+def _schema_references(value: Any) -> set[str]:
+    references: set[str] = set()
+    if isinstance(value, dict):
+        reference = value.get("$ref")
+        prefix = "#/components/schemas/"
+        if isinstance(reference, str) and reference.startswith(prefix):
+            references.add(reference.removeprefix(prefix))
+        for child in value.values():
+            references.update(_schema_references(child))
+    elif isinstance(value, list):
+        for child in value:
+            references.update(_schema_references(child))
+    return references

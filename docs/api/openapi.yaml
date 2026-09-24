@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.6.0
-  description: Contract sketch for the account, payment, and transaction services.
+  version: 0.7.0
+  description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
   - name: Payments
@@ -26,6 +26,19 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Account"
+              examples:
+                populated:
+                  summary: Synthetic account list
+                  value:
+                    - id: 101
+                      customerName: Demo Sender
+                      balance: 5000.00
+                    - id: 202
+                      customerName: Demo Recipient
+                      balance: 2500.00
+                empty:
+                  summary: No accounts stored
+                  value: []
     post:
       operationId: createAccount
       tags: [Accounts]
@@ -43,6 +56,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Account"
+              examples:
+                created:
+                  summary: Synthetic newly created account
+                  value:
+                    id: 101
+                    customerName: Demo Customer
+                    balance: 5000.00
         "400":
           description: Customer name or opening balance failed validation
   /payments:
@@ -62,6 +82,18 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Payment"
+              examples:
+                populated:
+                  summary: Synthetic payment after successful publication
+                  value:
+                    - id: 201
+                      fromAccount: 101
+                      toAccount: 202
+                      amount: 750.00
+                      status: PUBLISHED
+                empty:
+                  summary: No payments stored
+                  value: []
     post:
       operationId: createPayment
       tags: [Payments]
@@ -89,6 +121,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Payment"
+              examples:
+                created:
+                  summary: Synthetic payment with publication queued
+                  value:
+                    id: 201
+                    fromAccount: 101
+                    toAccount: 202
+                    amount: 750.00
+                    status: CREATED
         "400":
           description: Idempotency key or payment request failed validation
         "409":
@@ -240,6 +281,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Transaction"
+              examples:
+                populated:
+                  summary: Synthetic completed ledger entry
+                  value:
+                    - id: 301
+                      paymentId: 201
+                      fromAccount: 101
+                      toAccount: 202
+                      amount: 750.00
+                      createdAt: "2026-01-15T10:30:00Z"
+                      status: COMPLETED
+                empty:
+                  summary: No transactions stored
+                  value: []
   /transactions/account/{id}:
     servers:
       - url: http://localhost:8083
@@ -264,6 +319,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Transaction"
+              examples:
+                matchingAccount:
+                  summary: Synthetic ledger entry involving the requested account
+                  value:
+                    - id: 301
+                      paymentId: 201
+                      fromAccount: 101
+                      toAccount: 202
+                      amount: 750.00
+                      createdAt: "2026-01-15T10:30:00Z"
+                      status: COMPLETED
+                empty:
+                  summary: No transactions involve the requested account
+                  value: []
 components:
   securitySchemes:
     recoveryOperator:
@@ -300,12 +369,15 @@ components:
           type: integer
           format: int64
           readOnly: true
+          example: 101
         customerName:
           type: string
-          example: Asha Mehta
+          description: Customer display name accepted by the account creation API.
+          example: Demo Customer
         balance:
           type: number
           format: decimal
+          description: Current account balance represented as a decimal number.
           example: 5000.00
     CreateAccountRequest:
       type: object
@@ -317,7 +389,7 @@ components:
           minLength: 1
           pattern: '.*\S.*'
           description: Must contain at least one non-whitespace character.
-          example: Asha Mehta
+          example: Demo Customer
         balance:
           type: number
           format: decimal
@@ -325,22 +397,39 @@ components:
           example: 5000.00
     Payment:
       type: object
+      description: >-
+        Persisted payment state returned by the payment service. The internal
+        idempotency-key digest is never serialized.
       properties:
         id:
           type: integer
           format: int64
+          readOnly: true
+          example: 201
         fromAccount:
           type: integer
           format: int64
+          minimum: 1
+          example: 101
         toAccount:
           type: integer
           format: int64
+          minimum: 1
+          example: 202
         amount:
           type: number
           format: decimal
+          minimum: 0
+          exclusiveMinimum: true
+          multipleOf: 0.01
+          example: 750.00
         status:
           type: string
+          readOnly: true
           enum: [CREATED, PENDING_RETRY, PUBLISHED, PUBLISH_EXHAUSTED]
+          description: >-
+            Server-owned publication lifecycle state; a successful create starts
+            at CREATED and the outbox relay advances it later.
           example: CREATED
     CreatePaymentRequest:
       type: object
@@ -448,26 +537,43 @@ components:
           type: string
     Transaction:
       type: object
+      description: Read-only ledger entry derived from a validated payment event.
       properties:
         id:
           type: integer
           format: int64
+          readOnly: true
+          example: 301
         paymentId:
           type: integer
           format: int64
+          minimum: 1
           description: Payment event identity used to make ledger writes idempotent.
+          example: 201
         fromAccount:
           type: integer
           format: int64
+          minimum: 1
+          example: 101
         toAccount:
           type: integer
           format: int64
+          minimum: 1
+          example: 202
         amount:
           type: number
           format: decimal
+          minimum: 0
+          exclusiveMinimum: true
+          multipleOf: 0.01
+          example: 750.00
         createdAt:
           type: string
           format: date-time
+          readOnly: true
+          example: "2026-01-15T10:30:00Z"
         status:
           type: string
+          readOnly: true
+          description: Ledger processing state assigned by the transaction service.
           example: COMPLETED
