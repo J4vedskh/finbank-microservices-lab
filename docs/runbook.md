@@ -30,9 +30,10 @@ mkdocs serve
 
 The strict build validates the OpenAPI document, unique operation IDs,
 per-service server mappings, operator security alternatives, pinned Swagger UI
-checksums, and generated API Explorer files. The explorer is deliberately
-read-only, uses a generated public specification with no authentication schemes,
-and loads its Swagger UI code and styles from checked-in assets rather than a CDN.
+checksums, schema-valid response examples, example privacy rules, and generated
+API Explorer files. The explorer is deliberately read-only, uses a generated
+public specification with no authentication schemes, and loads its Swagger UI
+code and styles from checked-in assets rather than a CDN.
 
 ## Payment Outbox Operator Access
 

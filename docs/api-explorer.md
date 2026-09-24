@@ -5,6 +5,8 @@ build from the repository's canonical [OpenAPI 3.0 contract](api/openapi.yaml).
 It covers the account, payment, and transaction APIs in one searchable view.
 Internal payment-operations routes and authentication schemes remain available
 only in the raw canonical contract and their dedicated reference sections.
+All displayed response examples use synthetic demo data and are validated
+against the same response schemas during every strict documentation build.
 
 !!! warning "Contract viewer only"
     The generated viewer specification contains no authentication schemes, and

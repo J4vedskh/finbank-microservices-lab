@@ -11,8 +11,21 @@ Every strict documentation build semantically validates the OpenAPI 3.0.3 file,
 unique operation IDs, per-service local server mappings, operator security
 alternatives, vendored Swagger UI checksums, and generated explorer assets. The
 viewer specification has no credential model and cannot submit requests; the
-canonical YAML remains the source of truth for future response examples and
-contract-test coverage.
+canonical YAML remains the source of truth for contract-test coverage and future
+response evolution.
+
+### Example Policy
+
+Every public `200` response includes a named, schema-validated example. List
+operations show both populated and empty results, while create operations show
+the immediate server-owned response. All names, identifiers, balances, amounts,
+and timestamps are synthetic demo data; examples never contain idempotency
+digests, credentials, tokens, operator metadata, event payloads, or recovery
+details.
+
+Public `400` and `409` responses intentionally remain status-and-description
+contracts only. Their exact framework-generated bodies are not presented as a
+stable API until the services adopt one reviewed error representation.
 
 ## Account Service
 
