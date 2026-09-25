@@ -47,12 +47,13 @@ flowchart TD
 | 2026-09-22 | Trusted proxy transport | Added opt-in, operator-route-only proxy TLS recognition using exact immediate-peer IPs and one canonical HTTPS protocol header, while preserving direct TLS and rejecting ambiguous or global forwarding. | `mvn -T 1C clean test` |
 | 2026-09-23 | API Explorer | Added a locally vendored, read-only Swagger UI using a generated credential-free public projection of the canonical contract, corrected per-service server mappings, added stable operation IDs, and made strict docs builds validate OpenAPI semantics and viewer integrity offline. | `mkdocs build --strict` |
 | 2026-09-24 | Public API examples | Added schema-validated synthetic success examples for all six public operations, clarified response-model fields, and extended the docs gate to reject invalid, external, or selected known-sensitive example fields. | `mkdocs build --strict` |
+| 2026-09-25 | Public Problem Details | Standardized account/payment validation and payment idempotency-conflict failures as fixed five-field Problem Details, with generic safe wording and no rejected values, keys, framework messages, or persistence data. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Standardize public validation and idempotency-conflict errors as Problem Details. |
+| Backend | Replace public JPA entity serialization with explicit response DTOs. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

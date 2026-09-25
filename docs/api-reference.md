@@ -23,9 +23,19 @@ and timestamps are synthetic demo data; examples never contain idempotency
 digests, credentials, tokens, operator metadata, event payloads, or recovery
 details.
 
-Public `400` and `409` responses intentionally remain status-and-description
-contracts only. Their exact framework-generated bodies are not presented as a
-stable API until the services adopt one reviewed error representation.
+### Public Problem Details
+
+Account and payment validation failures now share one stable five-field
+`application/problem+json` contract: `type`, `title`, `status`, generic `detail`,
+and the public route `instance`. Malformed JSON, missing or invalid request
+fields, and missing or invalid payment idempotency headers all use
+`urn:finbank:problem:validation-failed` with HTTP `400`.
+
+Payment idempotency reuse conflicts use
+`urn:finbank:problem:idempotency-key-conflict` with HTTP `409`. Neither response
+contains field-error collections, rejected values, customer data, account or
+payment identifiers, the supplied idempotency key or digest, framework messages,
+exception names, persistence details, or stack traces.
 
 ## Account Service
 

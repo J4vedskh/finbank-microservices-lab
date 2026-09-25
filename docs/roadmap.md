@@ -45,6 +45,7 @@ gantt
 | 18 | Add health probes and resource limits to Kubernetes manifests |
 | 19 | Add Prometheus dashboard documentation and screenshots |
 | 20 | Completed: add validated synthetic response examples for every public API operation |
+| 21 | Completed: standardize public validation and idempotency-conflict Problem Details |
 
 ## Commit Standard
 
