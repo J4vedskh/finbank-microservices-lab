@@ -72,7 +72,9 @@ PUBLIC_SCHEMAS = {
     "Account",
     "CreateAccountRequest",
     "Payment",
+    "PaymentIdempotencyConflictProblem",
     "CreatePaymentRequest",
+    "PublicValidationProblem",
     "Transaction",
 }
 VENDOR_FILES = {
@@ -212,7 +214,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.7.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.8.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})

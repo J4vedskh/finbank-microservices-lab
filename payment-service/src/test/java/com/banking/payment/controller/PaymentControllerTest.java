@@ -27,6 +27,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -86,10 +87,9 @@ class PaymentControllerTest {
 
     @Test
     void createPayment_missingIdempotencyKey_returnsBadRequestWithoutSideEffects() throws Exception {
-        mockMvc.perform(post("/payments")
+        assertInvalidPaymentProblem(mockMvc.perform(post("/payments")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validPaymentRequest()))
-                .andExpect(status().isBadRequest());
+                        .content(validPaymentRequest())));
 
         verifyNoInteractions(paymentService);
     }
@@ -97,22 +97,20 @@ class PaymentControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"", " ", "contains space", "clé"})
     void createPayment_invalidIdempotencyKey_returnsBadRequestWithoutSideEffects(String key) throws Exception {
-        mockMvc.perform(post("/payments")
+        assertInvalidPaymentProblem(mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validPaymentRequest()))
-                .andExpect(status().isBadRequest());
+                        .content(validPaymentRequest())));
 
         verifyNoInteractions(paymentService);
     }
 
     @Test
     void createPayment_oversizedIdempotencyKey_returnsBadRequestWithoutSideEffects() throws Exception {
-        mockMvc.perform(post("/payments")
+        assertInvalidPaymentProblem(mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", "a".repeat(129))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validPaymentRequest()))
-                .andExpect(status().isBadRequest());
+                        .content(validPaymentRequest())));
 
         verifyNoInteractions(paymentService);
     }
@@ -124,9 +122,33 @@ class PaymentControllerTest {
 
         mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", "pay-key-42")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(validPaymentRequest()))
-                .andExpect(status().isConflict());
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validPaymentRequest()))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:idempotency-key-conflict"))
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.title").value("Idempotency key conflict"))
+                .andExpect(jsonPath("$.detail")
+                        .value("The Idempotency-Key is already associated with a different payment request."))
+                .andExpect(jsonPath("$.instance").value("/payments"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+    }
+
+    @Test
+    void createPayment_malformedJsonReturnsSafeProblemWithoutSideEffects() throws Exception {
+        assertInvalidPaymentProblem(mockMvc.perform(post("/payments")
+                .header("Idempotency-Key", "pay-key-42")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"fromAccount\":1,\"toAccount\":2,\"amount\":")));
+
+        verifyNoInteractions(paymentService);
     }
 
     @ParameterizedTest
@@ -214,13 +236,37 @@ class PaymentControllerTest {
     }
 
     private void assertBadRequestWithoutSideEffects(String request) throws Exception {
-        mockMvc.perform(post("/payments")
+        assertInvalidPaymentProblem(mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", "pay-key-42")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request))
-                .andExpect(status().isBadRequest());
+                        .content(request)));
 
         verifyNoInteractions(paymentService);
+    }
+
+    private void assertInvalidPaymentProblem(
+            org.springframework.test.web.servlet.ResultActions result
+    ) throws Exception {
+        result.andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:validation-failed"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Request validation failed"))
+                .andExpect(jsonPath("$.detail")
+                        .value("One or more request values are invalid."))
+                .andExpect(jsonPath("$.instance").value("/payments"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.field").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.fromAccount").doesNotExist())
+                .andExpect(jsonPath("$.toAccount").doesNotExist())
+                .andExpect(jsonPath("$.amount").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
     }
 
     private String validPaymentRequest() {

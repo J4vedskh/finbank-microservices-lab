@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -97,6 +98,11 @@ class AccountControllerTest {
     }
 
     @Test
+    void createAccount_malformedJsonReturnsSafeProblemWithoutSideEffects() throws Exception {
+        assertBadRequestWithoutSideEffects("{\"customerName\":\"Demo Customer\",\"balance\":");
+    }
+
+    @Test
     void createAccount_clientCannotOverrideServerOwnedId() throws Exception {
         when(accountService.create(any(CreateAccountRequest.class))).thenReturn(savedAccount());
 
@@ -123,7 +129,24 @@ class AccountControllerTest {
         mockMvc.perform(post("/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:validation-failed"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Request validation failed"))
+                .andExpect(jsonPath("$.detail")
+                        .value("One or more request values are invalid."))
+                .andExpect(jsonPath("$.instance").value("/accounts"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.field").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.customerName").doesNotExist())
+                .andExpect(jsonPath("$.balance").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
 
         verifyNoInteractions(accountService);
     }

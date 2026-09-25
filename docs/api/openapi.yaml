@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.7.0
+  version: 0.8.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -65,6 +65,19 @@ paths:
                     balance: 5000.00
         "400":
           description: Customer name or opening balance failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidRequest:
+                  summary: Safe validation failure without rejected values
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /accounts
   /payments:
     servers:
       - url: http://localhost:8082
@@ -132,8 +145,34 @@ paths:
                     status: CREATED
         "400":
           description: Idempotency key or payment request failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidRequest:
+                  summary: Safe validation failure without request values
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /payments
         "409":
           description: Idempotency key was already used for a different payment
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PaymentIdempotencyConflictProblem"
+              examples:
+                conflict:
+                  summary: Safe conflict without the idempotency key or payment identity
+                  value:
+                    type: urn:finbank:problem:idempotency-key-conflict
+                    title: Idempotency key conflict
+                    status: 409
+                    detail: The Idempotency-Key is already associated with a different payment request.
+                    instance: /payments
   /internal/payment-outbox/{eventId}/recovery:
     post:
       operationId: recoverPaymentOutboxEvent
@@ -535,6 +574,54 @@ components:
           type: string
         detail:
           type: string
+    PublicValidationProblem:
+      type: object
+      description: >-
+        Stable public validation failure. Rejected values, field errors,
+        framework messages, and exception details are intentionally omitted.
+      additionalProperties: false
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          enum: [urn:finbank:problem:validation-failed]
+        title:
+          type: string
+          enum: [Request validation failed]
+        status:
+          type: integer
+          format: int32
+          enum: [400]
+        detail:
+          type: string
+          enum: [One or more request values are invalid.]
+        instance:
+          type: string
+          enum: [/accounts, /payments]
+    PaymentIdempotencyConflictProblem:
+      type: object
+      description: >-
+        Stable payment idempotency conflict that never returns the supplied key,
+        its digest, the matching payment, or request-comparison details.
+      additionalProperties: false
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          enum: [urn:finbank:problem:idempotency-key-conflict]
+        title:
+          type: string
+          enum: [Idempotency key conflict]
+        status:
+          type: integer
+          format: int32
+          enum: [409]
+        detail:
+          type: string
+          enum: [The Idempotency-Key is already associated with a different payment request.]
+        instance:
+          type: string
+          enum: [/payments]
     Transaction:
       type: object
       description: Read-only ledger entry derived from a validated payment event.
