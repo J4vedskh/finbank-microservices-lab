@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.8.0
+  version: 0.9.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -402,7 +402,10 @@ components:
   schemas:
     Account:
       type: object
-      description: Persisted account; the service assigns the account id.
+      description: >-
+        Explicit public account response projection. Persistence entity fields
+        are not serialized directly.
+      additionalProperties: false
       properties:
         id:
           type: integer
@@ -437,8 +440,10 @@ components:
     Payment:
       type: object
       description: >-
-        Persisted payment state returned by the payment service. The internal
-        idempotency-key digest is never serialized.
+        Explicit public payment response projection. Persistence entity fields
+        are not serialized directly, and the internal idempotency-key digest is
+        not part of this contract.
+      additionalProperties: false
       properties:
         id:
           type: integer
@@ -624,7 +629,11 @@ components:
           enum: [/payments]
     Transaction:
       type: object
-      description: Read-only ledger entry derived from a validated payment event.
+      description: >-
+        Explicit public transaction response projection for a read-only ledger
+        entry derived from a validated payment event. Persistence entity fields
+        are not serialized directly.
+      additionalProperties: false
       properties:
         id:
           type: integer

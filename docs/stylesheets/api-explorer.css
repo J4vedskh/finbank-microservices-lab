@@ -29,3 +29,23 @@
   border-top: 1px solid #e5e7eb;
   border-bottom: 1px solid #e5e7eb;
 }
+
+@media screen and (max-width: 600px) {
+  #swagger-ui .swagger-ui .model-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #swagger-ui .swagger-ui table.model tr.description {
+    display: block;
+  }
+
+  #swagger-ui .swagger-ui table.model tr.description td {
+    display: block;
+    width: 100% !important;
+  }
+
+  #swagger-ui .swagger-ui table.model tr.description td:first-child {
+    padding-bottom: 0.25rem;
+  }
+}

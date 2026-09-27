@@ -77,6 +77,19 @@ PUBLIC_SCHEMAS = {
     "PublicValidationProblem",
     "Transaction",
 }
+PUBLIC_RESPONSE_FIELDS = {
+    "Account": {"id", "customerName", "balance"},
+    "Payment": {"id", "fromAccount", "toAccount", "amount", "status"},
+    "Transaction": {
+        "id",
+        "paymentId",
+        "fromAccount",
+        "toAccount",
+        "amount",
+        "createdAt",
+        "status",
+    },
+}
 VENDOR_FILES = {
     "LICENSE.txt",
     "NOTICE.txt",
@@ -214,7 +227,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.8.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.9.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -259,6 +272,14 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
         actual = security_schemes[name]
         if any(actual.get(field) != value for field, value in expected.items()):
             raise PluginError(f"The {name} security scheme changed meaning")
+
+    schemas = specification.get("components", {}).get("schemas", {})
+    for name, expected_fields in PUBLIC_RESPONSE_FIELDS.items():
+        schema = schemas.get(name, {})
+        if schema.get("additionalProperties") is not False:
+            raise PluginError(f"The {name} public response must reject extra fields")
+        if set(schema.get("properties", {})) != expected_fields:
+            raise PluginError(f"The {name} public response field allowlist changed")
 
 
 def _create_public_specification(specification: dict[str, Any]) -> dict[str, Any]:

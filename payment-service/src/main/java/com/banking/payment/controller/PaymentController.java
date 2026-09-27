@@ -1,7 +1,7 @@
 package com.banking.payment.controller;
 
 import com.banking.payment.api.CreatePaymentRequest;
-import com.banking.payment.entity.Payment;
+import com.banking.payment.api.PaymentResponse;
 import com.banking.payment.service.PaymentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -21,12 +21,14 @@ public class PaymentController {
     }
 
     @GetMapping
-    public List<Payment> all() {
-        return paymentService.findAll();
+    public List<PaymentResponse> all() {
+        return paymentService.findAll().stream()
+                .map(PaymentResponse::from)
+                .toList();
     }
 
     @PostMapping
-    public Payment create(
+    public PaymentResponse create(
             @RequestHeader("Idempotency-Key")
             @NotBlank
             @Size(max = 128)
@@ -34,6 +36,6 @@ public class PaymentController {
             String idempotencyKey,
             @Valid @RequestBody CreatePaymentRequest request
     ) {
-        return paymentService.create(idempotencyKey, request);
+        return PaymentResponse.from(paymentService.create(idempotencyKey, request));
     }
 }

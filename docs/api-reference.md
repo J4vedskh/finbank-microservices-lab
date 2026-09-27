@@ -37,6 +37,25 @@ contains field-error collections, rejected values, customer data, account or
 payment identifiers, the supplied idempotency key or digest, framework messages,
 exception names, persistence details, or stack traces.
 
+### Public Response DTO Boundary
+
+All six public operations return explicit immutable response records rather than
+serializing JPA entities. Controllers map service results field by field while
+services and repositories keep their existing persistence models:
+
+| Response | Exact public fields |
+| --- | --- |
+| Account | `id`, `customerName`, `balance` |
+| Payment | `id`, `fromAccount`, `toAccount`, `amount`, `status` |
+| Transaction | `id`, `paymentId`, `fromAccount`, `toAccount`, `amount`, `createdAt`, `status` |
+
+The OpenAPI response schemas reject additional properties, and MVC tests assert
+the same exact JSON field counts for every list, create, and account-history
+response. Adding a persistence getter no longer adds an API field automatically;
+new public fields require an explicit DTO, contract, example, and test change.
+Operator endpoints keep their existing dedicated response records and are not
+part of this public boundary.
+
 ## Account Service
 
 Base URL: `http://localhost:8081`

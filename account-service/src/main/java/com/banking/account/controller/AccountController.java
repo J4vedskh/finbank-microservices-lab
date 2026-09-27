@@ -1,7 +1,7 @@
 package com.banking.account.controller;
 
 import com.banking.account.api.CreateAccountRequest;
-import com.banking.account.entity.Account;
+import com.banking.account.api.AccountResponse;
 import com.banking.account.service.AccountService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,12 +22,14 @@ public class AccountController {
     }
 
     @GetMapping
-    public List<Account> all() {
-        return accountService.findAll();
+    public List<AccountResponse> all() {
+        return accountService.findAll().stream()
+                .map(AccountResponse::from)
+                .toList();
     }
 
     @PostMapping
-    public Account create(@Valid @RequestBody CreateAccountRequest request) {
-        return accountService.create(request);
+    public AccountResponse create(@Valid @RequestBody CreateAccountRequest request) {
+        return AccountResponse.from(accountService.create(request));
     }
 }

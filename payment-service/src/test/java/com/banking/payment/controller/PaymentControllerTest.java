@@ -47,7 +47,11 @@ class PaymentControllerTest {
 
         mockMvc.perform(get("/payments"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].length()").value(5))
                 .andExpect(jsonPath("$[0].id").value(42))
+                .andExpect(jsonPath("$[0].fromAccount").value(1))
+                .andExpect(jsonPath("$[0].toAccount").value(2))
+                .andExpect(jsonPath("$[0].amount").value(750.00))
                 .andExpect(jsonPath("$[0].idempotencyKeyHash").doesNotExist())
                 .andExpect(jsonPath("$[0].status").value("CREATED"));
 
@@ -68,8 +72,9 @@ class PaymentControllerTest {
                                   "toAccount": 2,
                                   "amount": 750.00
                                 }
-                                """))
+                """))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
                 .andExpect(jsonPath("$.id").value(42))
                 .andExpect(jsonPath("$.fromAccount").value(1))
                 .andExpect(jsonPath("$.toAccount").value(2))

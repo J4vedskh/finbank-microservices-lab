@@ -66,6 +66,12 @@ fixed code, and server time. Real-IdP qualification, external dead-letter delive
 and MySQL lock and retention qualification remain tracked in the
 [resilience guide](resilience.md).
 
+Public account, payment, and transaction controllers map persistence entities
+into explicit immutable response records before JSON serialization. This keeps
+JPA relationships and future internal fields private by default while preserving
+the established public field names. Services and repositories remain entity-
+oriented; the mapping is deliberately confined to the HTTP adapter boundary.
+
 Each committed terminal publication cycle also appends an immutable local
 dead-letter handoff in the same database transaction. It points to the retained
 outbox event and snapshots only the exhaustion sequence, time, attempt count,
