@@ -9,6 +9,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -32,8 +33,14 @@ class TransactionControllerTest {
 
         mockMvc.perform(get("/transactions"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].length()").value(7))
                 .andExpect(jsonPath("$[0].id").value(99))
                 .andExpect(jsonPath("$[0].paymentId").value(42))
+                .andExpect(jsonPath("$[0].fromAccount").value(1))
+                .andExpect(jsonPath("$[0].toAccount").value(2))
+                .andExpect(jsonPath("$[0].amount").value(750.00))
+                .andExpect(jsonPath("$[0].createdAt")
+                        .value("2026-09-27T09:30:00Z"))
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"));
 
         verify(transactionService).findAll();
@@ -45,8 +52,15 @@ class TransactionControllerTest {
 
         mockMvc.perform(get("/transactions/account/7"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].length()").value(7))
+                .andExpect(jsonPath("$[0].id").value(99))
+                .andExpect(jsonPath("$[0].paymentId").value(42))
                 .andExpect(jsonPath("$[0].fromAccount").value(1))
-                .andExpect(jsonPath("$[0].toAccount").value(2));
+                .andExpect(jsonPath("$[0].toAccount").value(2))
+                .andExpect(jsonPath("$[0].amount").value(750.00))
+                .andExpect(jsonPath("$[0].createdAt")
+                        .value("2026-09-27T09:30:00Z"))
+                .andExpect(jsonPath("$[0].status").value("COMPLETED"));
 
         verify(transactionService).findByAccount(7L);
     }
@@ -58,6 +72,7 @@ class TransactionControllerTest {
         transaction.setFromAccount(1L);
         transaction.setToAccount(2L);
         transaction.setAmount(new BigDecimal("750.00"));
+        transaction.setCreatedAt(Instant.parse("2026-09-27T09:30:00Z"));
         transaction.setStatus("COMPLETED");
         return transaction;
     }

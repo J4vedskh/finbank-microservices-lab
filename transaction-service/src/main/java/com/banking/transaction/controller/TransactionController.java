@@ -1,6 +1,6 @@
 package com.banking.transaction.controller;
 
-import com.banking.transaction.entity.Transaction;
+import com.banking.transaction.api.TransactionResponse;
 import com.banking.transaction.service.TransactionService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,12 +19,16 @@ public class TransactionController {
     }
 
     @GetMapping
-    public List<Transaction> all() {
-        return transactionService.findAll();
+    public List<TransactionResponse> all() {
+        return transactionService.findAll().stream()
+                .map(TransactionResponse::from)
+                .toList();
     }
 
     @GetMapping("/account/{id}")
-    public List<Transaction> byAccount(@PathVariable Long id) {
-        return transactionService.findByAccount(id);
+    public List<TransactionResponse> byAccount(@PathVariable Long id) {
+        return transactionService.findByAccount(id).stream()
+                .map(TransactionResponse::from)
+                .toList();
     }
 }

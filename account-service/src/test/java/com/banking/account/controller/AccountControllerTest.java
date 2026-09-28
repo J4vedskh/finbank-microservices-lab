@@ -42,8 +42,10 @@ class AccountControllerTest {
 
         mockMvc.perform(get("/accounts"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].length()").value(3))
                 .andExpect(jsonPath("$[0].id").value(42))
-                .andExpect(jsonPath("$[0].customerName").value("Asha Mehta"));
+                .andExpect(jsonPath("$[0].customerName").value("Asha Mehta"))
+                .andExpect(jsonPath("$[0].balance").value(5000.00));
 
         verify(accountService).findAll();
     }
@@ -59,8 +61,9 @@ class AccountControllerTest {
                                   "customerName": "Asha Mehta",
                                   "balance": 5000.00
                                 }
-                                """))
+                """))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
                 .andExpect(jsonPath("$.id").value(42))
                 .andExpect(jsonPath("$.customerName").value("Asha Mehta"))
                 .andExpect(jsonPath("$.balance").value(5000.00));
