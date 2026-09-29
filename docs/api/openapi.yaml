@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.9.0
+  version: 0.10.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -349,6 +349,7 @@ paths:
           schema:
             type: integer
             format: int64
+            minimum: 1
       responses:
         "200":
           description: Matching transactions returned
@@ -372,6 +373,21 @@ paths:
                 empty:
                   summary: No transactions involve the requested account
                   value: []
+        "400":
+          description: Account id was nonnumeric or not positive
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidAccountId:
+                  summary: Safe path validation failure without the supplied account id
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /transactions/account
 components:
   securitySchemes:
     recoveryOperator:
@@ -602,7 +618,7 @@ components:
           enum: [One or more request values are invalid.]
         instance:
           type: string
-          enum: [/accounts, /payments]
+          enum: [/accounts, /payments, /transactions/account]
     PaymentIdempotencyConflictProblem:
       type: object
       description: >-

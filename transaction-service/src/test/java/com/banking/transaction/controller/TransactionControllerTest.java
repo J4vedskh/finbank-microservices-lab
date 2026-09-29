@@ -3,18 +3,27 @@ package com.banking.transaction.controller;
 import com.banking.transaction.entity.Transaction;
 import com.banking.transaction.service.TransactionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -63,6 +72,48 @@ class TransactionControllerTest {
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"));
 
         verify(transactionService).findByAccount(7L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void listAccountHistory_nonPositiveIdReturnsSafeProblemWithoutSideEffects(
+            String accountId
+    ) throws Exception {
+        assertInvalidAccountHistoryProblem(accountId)
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(HandlerMethodValidationException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @Test
+    void listAccountHistory_nonNumericIdReturnsSafeProblemWithoutSideEffects() throws Exception {
+        assertInvalidAccountHistoryProblem("not-a-number")
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(MethodArgumentTypeMismatchException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    private ResultActions assertInvalidAccountHistoryProblem(String accountId) throws Exception {
+        return mockMvc.perform(get("/transactions/account/{id}", accountId))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:validation-failed"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Request validation failed"))
+                .andExpect(jsonPath("$.detail")
+                        .value("One or more request values are invalid."))
+                .andExpect(jsonPath("$.instance").value("/transactions/account"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.field").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.accountId").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
     }
 
     private Transaction savedTransaction() {
