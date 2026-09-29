@@ -25,11 +25,15 @@ details.
 
 ### Public Problem Details
 
-Account and payment validation failures now share one stable five-field
-`application/problem+json` contract: `type`, `title`, `status`, generic `detail`,
-and the public route `instance`. Malformed JSON, missing or invalid request
-fields, and missing or invalid payment idempotency headers all use
+Account, payment, and transaction account-history validation failures share one
+stable five-field `application/problem+json` contract: `type`, `title`, `status`,
+generic `detail`, and the public route `instance`. Malformed JSON, missing or
+invalid request fields, missing or invalid payment idempotency headers, and
+nonnumeric or nonpositive transaction account IDs all use
 `urn:finbank:problem:validation-failed` with HTTP `400`.
+
+The account-history response uses the fixed route-family instance
+`/transactions/account`; it never echoes the supplied path segment.
 
 Payment idempotency reuse conflicts use
 `urn:finbank:problem:idempotency-key-conflict` with HTTP `409`. Neither response

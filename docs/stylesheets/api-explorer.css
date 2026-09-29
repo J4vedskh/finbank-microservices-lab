@@ -48,4 +48,33 @@
   #swagger-ui .swagger-ui table.model tr.description td:first-child {
     padding-bottom: 0.25rem;
   }
+
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table thead {
+    display: none;
+  }
+
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table tbody,
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table tr.response {
+    display: block;
+  }
+
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table tr.response td {
+    display: block;
+    width: 100% !important;
+    max-width: none;
+  }
+
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table .response-col_status {
+    padding-bottom: 0;
+  }
+
+  #swagger-ui .swagger-ui
+  #operations-Transactions-listTransactionsByAccount .responses-table .response-col_links {
+    display: none;
+  }
 }

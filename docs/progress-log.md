@@ -49,12 +49,13 @@ flowchart TD
 | 2026-09-24 | Public API examples | Added schema-validated synthetic success examples for all six public operations, clarified response-model fields, and extended the docs gate to reject invalid, external, or selected known-sensitive example fields. | `mkdocs build --strict` |
 | 2026-09-25 | Public Problem Details | Standardized account/payment validation and payment idempotency-conflict failures as fixed five-field Problem Details, with generic safe wording and no rejected values, keys, framework messages, or persistence data. | `mvn -T 1C clean test` |
 | 2026-09-27 | Public response DTOs | Replaced direct Account, Payment, and Transaction entity serialization with explicit immutable response records for all six public operations, while preserving the existing JSON fields and closing each OpenAPI schema to additional properties. | `mvn -T 1C clean test` |
+| 2026-09-29 | Transaction account ID validation | Rejected nonpositive and nonnumeric account-history path IDs before service access and returned the same fixed five-field public Problem Details without reflecting the supplied value. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Validate transaction account-history path IDs and return public Problem Details. |
+| Backend | Add bounded pagination to the public account, payment, and transaction lists. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

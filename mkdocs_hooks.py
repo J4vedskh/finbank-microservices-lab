@@ -90,6 +90,11 @@ PUBLIC_RESPONSE_FIELDS = {
         "status",
     },
 }
+PUBLIC_VALIDATION_INSTANCES = {
+    "/accounts",
+    "/payments",
+    "/transactions/account",
+}
 VENDOR_FILES = {
     "LICENSE.txt",
     "NOTICE.txt",
@@ -227,7 +232,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.9.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.10.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -280,6 +285,53 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
             raise PluginError(f"The {name} public response must reject extra fields")
         if set(schema.get("properties", {})) != expected_fields:
             raise PluginError(f"The {name} public response field allowlist changed")
+
+    validation_problem = schemas.get("PublicValidationProblem", {})
+    actual_instances = set(
+        validation_problem.get("properties", {})
+        .get("instance", {})
+        .get("enum", [])
+    )
+    if actual_instances != PUBLIC_VALIDATION_INSTANCES:
+        raise PluginError("The public validation instance allowlist changed")
+
+    account_history = paths.get("/transactions/account/{id}", {}).get("get", {})
+    id_parameters = [
+        parameter
+        for parameter in account_history.get("parameters", [])
+        if parameter.get("name") == "id" and parameter.get("in") == "path"
+    ]
+    if (
+        len(id_parameters) != 1
+        or id_parameters[0].get("required") is not True
+        or id_parameters[0].get("schema", {}).get("minimum") != 1
+    ):
+        raise PluginError("The transaction account-history id must remain positive")
+
+    validation_media = (
+        account_history.get("responses", {})
+        .get("400", {})
+        .get("content", {})
+        .get("application/problem+json", {})
+    )
+    if validation_media.get("schema", {}).get("$ref") != (
+        "#/components/schemas/PublicValidationProblem"
+    ):
+        raise PluginError("Transaction account-history validation must use public Problem Details")
+    expected_validation_example = {
+        "type": "urn:finbank:problem:validation-failed",
+        "title": "Request validation failed",
+        "status": 400,
+        "detail": "One or more request values are invalid.",
+        "instance": "/transactions/account",
+    }
+    validation_examples = [
+        example.get("value")
+        for example in validation_media.get("examples", {}).values()
+        if isinstance(example, dict)
+    ]
+    if expected_validation_example not in validation_examples:
+        raise PluginError("Transaction account-history validation example changed")
 
 
 def _create_public_specification(specification: dict[str, Any]) -> dict[str, Any]:

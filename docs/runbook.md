@@ -35,10 +35,12 @@ API Explorer files. The explorer is deliberately read-only, uses a generated
 public specification with no authentication schemes, and loads its Swagger UI
 code and styles from checked-in assets rather than a CDN.
 
-Public account/payment validation and payment idempotency-conflict responses use
-fixed Problem Details payloads. Treat their five fields as public contract data;
-do not add rejected values, request bodies, idempotency keys, exception messages,
-or persistence details to these handlers.
+Public account, payment, and transaction account-history validation responses,
+plus payment idempotency conflicts, use fixed Problem Details payloads. Treat
+their five fields as public contract data; do not add rejected values, request
+bodies, path IDs, idempotency keys, exception messages, or persistence details
+to these handlers. Account-history validation uses the stable
+`/transactions/account` instance rather than reflecting the supplied ID.
 
 ## Payment Outbox Operator Access
 

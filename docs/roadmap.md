@@ -47,6 +47,7 @@ gantt
 | 20 | Completed: add validated synthetic response examples for every public API operation |
 | 21 | Completed: standardize public validation and idempotency-conflict Problem Details |
 | 22 | Completed: replace public JPA entity serialization with explicit response DTOs |
+| 23 | Completed: validate transaction account-history IDs with public Problem Details |
 
 ## Commit Standard
 
