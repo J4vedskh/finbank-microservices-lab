@@ -3,18 +3,23 @@ package com.banking.payment.service;
 import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.repository.PaymentRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.Objects;
 
 @Service
 public class PaymentService {
+    public static final int DEFAULT_LIMIT = 50;
+    public static final int MAX_LIMIT = 100;
+
     private final PaymentRepository paymentRepository;
     private final PaymentCreationTransaction paymentCreationTransaction;
 
@@ -26,8 +31,14 @@ public class PaymentService {
         this.paymentCreationTransaction = paymentCreationTransaction;
     }
 
-    public List<Payment> findAll() {
-        return paymentRepository.findAll();
+    @Transactional(readOnly = true)
+    public Slice<Payment> findAll(Long afterId, int limit) {
+        validatePageRequest(afterId, limit);
+        PageRequest pageRequest = PageRequest.of(0, limit);
+        if (afterId == null) {
+            return paymentRepository.findAllByOrderByIdAsc(pageRequest);
+        }
+        return paymentRepository.findByIdGreaterThanOrderByIdAsc(afterId, pageRequest);
     }
 
     public Payment create(String idempotencyKey, CreatePaymentRequest request) {
@@ -63,6 +74,17 @@ public class PaymentService {
                 && Objects.equals(existing.getToAccount(), request.toAccount())
                 && existing.getAmount() != null
                 && existing.getAmount().compareTo(request.amount()) == 0;
+    }
+
+    private void validatePageRequest(Long afterId, int limit) {
+        if (afterId != null && afterId <= 0) {
+            throw new IllegalArgumentException("payment cursor must be positive");
+        }
+        if (limit <= 0 || limit > MAX_LIMIT) {
+            throw new IllegalArgumentException(
+                    "payment list limit must be between 1 and " + MAX_LIMIT
+            );
+        }
     }
 
     private String hash(String idempotencyKey) {

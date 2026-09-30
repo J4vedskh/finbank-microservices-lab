@@ -14,6 +14,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -147,14 +151,29 @@ class PaymentServiceTest {
     }
 
     @Test
-    void findAll_returnsRepositoryResults() {
-        Payment payment = new Payment();
-        payment.setId(42L);
-        when(paymentRepository.findAll()).thenReturn(List.of(payment));
+    void findAll_usesExclusiveCursorAndBoundedSliceWithoutCreationInteraction() {
+        Payment first = payment(41L, 1L, 2L, "750.00");
+        Payment second = payment(42L, 3L, 4L, "125.00");
+        PageRequest request = PageRequest.of(0, 2);
+        Slice<Payment> repositorySlice = new SliceImpl<>(List.of(first, second), request, true);
+        when(paymentRepository.findByIdGreaterThanOrderByIdAsc(40L, request))
+                .thenReturn(repositorySlice);
 
-        List<Payment> result = paymentService.findAll();
+        Slice<Payment> result = paymentService.findAll(40L, 2);
 
-        assertThat(result).containsExactly(payment);
+        assertThat(result.getContent()).containsExactly(first, second);
+        assertThat(result.hasNext()).isTrue();
+        verify(paymentRepository).findByIdGreaterThanOrderByIdAsc(40L, request);
+        verifyNoInteractions(paymentCreationTransaction);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidPageRequests")
+    void findAll_rejectsInvalidPageRequestBeforeRepositoryAccess(Long afterId, int limit) {
+        assertThatThrownBy(() -> paymentService.findAll(afterId, limit))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(paymentRepository, paymentCreationTransaction);
     }
 
     private static Stream<Arguments> conflictingRequests() {
@@ -162,6 +181,16 @@ class PaymentServiceTest {
                 Arguments.of(request(3L, 2L, "750.00")),
                 Arguments.of(request(1L, 3L, "750.00")),
                 Arguments.of(request(1L, 2L, "751.00"))
+        );
+    }
+
+    private static Stream<Arguments> invalidPageRequests() {
+        return Stream.of(
+                Arguments.of(0L, 1),
+                Arguments.of(-1L, 1),
+                Arguments.of(null, 0),
+                Arguments.of(null, -1),
+                Arguments.of(null, PaymentService.MAX_LIMIT + 1)
         );
     }
 

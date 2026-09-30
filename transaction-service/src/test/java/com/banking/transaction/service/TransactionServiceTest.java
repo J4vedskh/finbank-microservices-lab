@@ -12,6 +12,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -159,13 +162,45 @@ class TransactionServiceTest {
     }
 
     @Test
-    void findAll_returnsRepositoryResults() {
+    void findAll_withoutCursor_returnsAscendingBoundedRepositorySlice() {
         Transaction transaction = new Transaction();
-        when(transactionRepository.findAll()).thenReturn(List.of(transaction));
+        PageRequest pageRequest = PageRequest.of(0, TransactionService.DEFAULT_LIMIT);
+        Slice<Transaction> expected = new SliceImpl<>(List.of(transaction), pageRequest, false);
+        when(transactionRepository.findAllByOrderByIdAsc(pageRequest)).thenReturn(expected);
 
-        List<Transaction> result = transactionService.findAll();
+        Slice<Transaction> result = transactionService.findAll(
+                null,
+                TransactionService.DEFAULT_LIMIT
+        );
 
-        assertThat(result).containsExactly(transaction);
+        assertThat(result.getContent()).containsExactly(transaction);
+        verify(transactionRepository).findAllByOrderByIdAsc(pageRequest);
+    }
+
+    @Test
+    void findAll_withCursor_usesStrictlyGreaterThanAscendingRepositorySlice() {
+        Transaction transaction = new Transaction();
+        PageRequest pageRequest = PageRequest.of(0, 2);
+        Slice<Transaction> expected = new SliceImpl<>(List.of(transaction), pageRequest, true);
+        when(transactionRepository.findByIdGreaterThanOrderByIdAsc(7L, pageRequest))
+                .thenReturn(expected);
+
+        Slice<Transaction> result = transactionService.findAll(7L, 2);
+
+        assertThat(result).isSameAs(expected);
+        verify(transactionRepository).findByIdGreaterThanOrderByIdAsc(7L, pageRequest);
+    }
+
+    @Test
+    void findAll_rejectsInvalidCursorOrLimitBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> transactionService.findAll(0L, TransactionService.DEFAULT_LIMIT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findAll(1L, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findAll(1L, TransactionService.MAX_LIMIT + 1))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(transactionRepository);
     }
 
     @Test

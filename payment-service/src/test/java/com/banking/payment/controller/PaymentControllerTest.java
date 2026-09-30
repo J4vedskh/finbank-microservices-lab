@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,12 +24,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,11 +46,21 @@ class PaymentControllerTest {
     private PaymentService paymentService;
 
     @Test
-    void listPayments_delegatesToService() throws Exception {
-        when(paymentService.findAll()).thenReturn(List.of(savedPayment()));
+    void listPayments_usesDefaultsAndReturnsNextLinkWithoutInternalFields() throws Exception {
+        when(paymentService.findAll(isNull(), eq(PaymentService.DEFAULT_LIMIT))).thenReturn(
+                new SliceImpl<>(
+                        List.of(savedPayment()),
+                        PageRequest.of(0, PaymentService.DEFAULT_LIMIT),
+                        true
+                )
+        );
 
         mockMvc.perform(get("/payments"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Link",
+                        "</payments?afterId=42&limit=50>; rel=\"next\""
+                ))
                 .andExpect(jsonPath("$[0].length()").value(5))
                 .andExpect(jsonPath("$[0].id").value(42))
                 .andExpect(jsonPath("$[0].fromAccount").value(1))
@@ -55,7 +69,42 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$[0].idempotencyKeyHash").doesNotExist())
                 .andExpect(jsonPath("$[0].status").value("CREATED"));
 
-        verify(paymentService).findAll();
+        verify(paymentService).findAll(null, PaymentService.DEFAULT_LIMIT);
+    }
+
+    @Test
+    void listPayments_usesCustomCursorAndOmitsLinkOnFinalPage() throws Exception {
+        Payment payment = savedPayment();
+        payment.setId(43L);
+        when(paymentService.findAll(42L, 2)).thenReturn(
+                new SliceImpl<>(List.of(payment), PageRequest.of(0, 2), false)
+        );
+
+        mockMvc.perform(get("/payments")
+                        .param("afterId", "42")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Link"))
+                .andExpect(jsonPath("$[0].id").value(43))
+                .andExpect(jsonPath("$[0].idempotencyKeyHash").doesNotExist());
+
+        verify(paymentService).findAll(42L, 2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "?afterId=0",
+            "?afterId=-1",
+            "?afterId=not-a-number",
+            "?limit=0",
+            "?limit=-1",
+            "?limit=101",
+            "?limit=not-a-number"
+    })
+    void listPayments_invalidPaginationReturnsSafeProblemWithoutServiceCall(String query) throws Exception {
+        assertInvalidPaymentProblem(mockMvc.perform(get("/payments" + query)));
+
+        verifyNoInteractions(paymentService);
     }
 
     @Test

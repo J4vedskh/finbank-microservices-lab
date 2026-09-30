@@ -93,7 +93,13 @@ PUBLIC_RESPONSE_FIELDS = {
 PUBLIC_VALIDATION_INSTANCES = {
     "/accounts",
     "/payments",
+    "/transactions",
     "/transactions/account",
+}
+PUBLIC_PAGINATION_LINKS = {
+    "/accounts": '</accounts?afterId=202&limit=50>; rel="next"',
+    "/payments": '</payments?afterId=201&limit=50>; rel="next"',
+    "/transactions": '</transactions?afterId=301&limit=50>; rel="next"',
 }
 VENDOR_FILES = {
     "LICENSE.txt",
@@ -232,7 +238,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.10.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.11.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -332,6 +338,66 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     ]
     if expected_validation_example not in validation_examples:
         raise PluginError("Transaction account-history validation example changed")
+
+    for path, expected_link in PUBLIC_PAGINATION_LINKS.items():
+        operation = paths.get(path, {}).get("get", {})
+        parameters = {
+            (parameter.get("name"), parameter.get("in")): parameter
+            for parameter in operation.get("parameters", [])
+        }
+        if set(parameters) != {("afterId", "query"), ("limit", "query")}:
+            raise PluginError(f"GET {path} pagination parameter inventory changed")
+
+        cursor = parameters[("afterId", "query")]
+        cursor_schema = cursor.get("schema", {})
+        if (
+            cursor.get("required") is not False
+            or cursor_schema.get("type") != "integer"
+            or cursor_schema.get("format") != "int64"
+            or cursor_schema.get("minimum") != 1
+        ):
+            raise PluginError(f"GET {path} cursor contract changed")
+
+        limit = parameters[("limit", "query")]
+        limit_schema = limit.get("schema", {})
+        if (
+            limit.get("required") is not False
+            or limit_schema.get("type") != "integer"
+            or limit_schema.get("format") != "int32"
+            or limit_schema.get("minimum") != 1
+            or limit_schema.get("maximum") != 100
+            or limit_schema.get("default") != 50
+        ):
+            raise PluginError(f"GET {path} limit contract changed")
+
+        responses = operation.get("responses", {})
+        link = responses.get("200", {}).get("headers", {}).get("Link", {})
+        if link.get("schema", {}).get("type") != "string" or link.get("example") != expected_link:
+            raise PluginError(f"GET {path} next-link contract changed")
+
+        validation_media = (
+            responses.get("400", {})
+            .get("content", {})
+            .get("application/problem+json", {})
+        )
+        if validation_media.get("schema", {}).get("$ref") != (
+            "#/components/schemas/PublicValidationProblem"
+        ):
+            raise PluginError(f"GET {path} pagination validation must use public Problem Details")
+        expected_problem = {
+            "type": "urn:finbank:problem:validation-failed",
+            "title": "Request validation failed",
+            "status": 400,
+            "detail": "One or more request values are invalid.",
+            "instance": path,
+        }
+        problem_examples = [
+            example.get("value")
+            for example in validation_media.get("examples", {}).values()
+            if isinstance(example, dict)
+        ]
+        if expected_problem not in problem_examples:
+            raise PluginError(f"GET {path} pagination validation example changed")
 
 
 def _create_public_specification(specification: dict[str, Any]) -> dict[str, Any]:

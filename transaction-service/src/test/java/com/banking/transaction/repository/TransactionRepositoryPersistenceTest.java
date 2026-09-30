@@ -8,6 +8,8 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -74,6 +76,26 @@ class TransactionRepositoryPersistenceTest {
         assertThatThrownBy(() ->
                 transactionRepository.saveAndFlush(transaction(42L, 3L, 4L))
         ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void keysetPagination_isAscendingExclusiveAndDoesNotDuplicateRowsAcrossPages() {
+        Transaction first = transactionRepository.saveAndFlush(transaction(101L, 1L, 2L));
+        Transaction second = transactionRepository.saveAndFlush(transaction(102L, 3L, 4L));
+        Transaction third = transactionRepository.saveAndFlush(transaction(103L, 5L, 6L));
+        entityManager.clear();
+
+        PageRequest pageRequest = PageRequest.of(0, 2);
+        Slice<Transaction> firstPage = transactionRepository.findAllByOrderByIdAsc(pageRequest);
+        Slice<Transaction> secondPage = transactionRepository
+                .findByIdGreaterThanOrderByIdAsc(second.getId(), pageRequest);
+
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.getContent()).extracting(Transaction::getId)
+                .containsExactly(first.getId(), second.getId());
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(secondPage.getContent()).extracting(Transaction::getId)
+                .containsExactly(third.getId());
     }
 
     private void assertPersistedTransaction(Transaction transaction) {

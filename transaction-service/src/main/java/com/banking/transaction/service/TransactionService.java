@@ -3,7 +3,10 @@ package com.banking.transaction.service;
 import com.banking.transaction.entity.Transaction;
 import com.banking.transaction.repository.TransactionRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -12,6 +15,9 @@ import java.util.Objects;
 
 @Service
 public class TransactionService {
+    public static final int DEFAULT_LIMIT = 50;
+    public static final int MAX_LIMIT = 100;
+
     private static final String EXPECTED_FORMAT =
             "expected paymentId|fromAccount|toAccount|amount";
 
@@ -21,12 +27,30 @@ public class TransactionService {
         this.transactionRepository = transactionRepository;
     }
 
-    public List<Transaction> findAll() {
-        return transactionRepository.findAll();
+    @Transactional(readOnly = true)
+    public Slice<Transaction> findAll(Long afterId, int limit) {
+        validateListRequest(afterId, limit);
+
+        PageRequest pageRequest = PageRequest.of(0, limit);
+        if (afterId == null) {
+            return transactionRepository.findAllByOrderByIdAsc(pageRequest);
+        }
+        return transactionRepository.findByIdGreaterThanOrderByIdAsc(afterId, pageRequest);
     }
 
     public List<Transaction> findByAccount(Long accountId) {
         return transactionRepository.findByFromAccountOrToAccount(accountId, accountId);
+    }
+
+    private void validateListRequest(Long afterId, int limit) {
+        if (afterId != null && afterId <= 0) {
+            throw new IllegalArgumentException("afterId must be positive");
+        }
+        if (limit < 1 || limit > MAX_LIMIT) {
+            throw new IllegalArgumentException(
+                    "transaction list limit must be between 1 and " + MAX_LIMIT
+            );
+        }
     }
 
     public Transaction recordPaymentEvent(String payload) {

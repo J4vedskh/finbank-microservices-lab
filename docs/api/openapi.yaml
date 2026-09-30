@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.10.0
+  version: 0.11.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -17,9 +17,39 @@ paths:
       operationId: listAccounts
       tags: [Accounts]
       summary: List accounts
+      description: >-
+        Returns at most limit accounts in ascending id order. Pass the final id
+        from a rel="next" Link target back as afterId to continue.
+      parameters:
+        - name: afterId
+          in: query
+          required: false
+          description: Return rows whose id is strictly greater than this exclusive cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rows returned; defaults to 50 and cannot exceed 100.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         "200":
-          description: Accounts returned
+          description: Bounded account page returned in ascending id order
+          headers:
+            Link:
+              description: >-
+                Present only when another row was observed. The rel="next"
+                target uses the final returned id as the next exclusive cursor.
+              schema:
+                type: string
+              example: '</accounts?afterId=202&limit=50>; rel="next"'
           content:
             application/json:
               schema:
@@ -39,6 +69,21 @@ paths:
                 empty:
                   summary: No accounts stored
                   value: []
+        "400":
+          description: Pagination cursor or limit failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidPagination:
+                  summary: Safe pagination failure without rejected values
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /accounts
     post:
       operationId: createAccount
       tags: [Accounts]
@@ -86,9 +131,39 @@ paths:
       operationId: listPayments
       tags: [Payments]
       summary: List payments
+      description: >-
+        Returns at most limit payments in ascending id order. Pass the final id
+        from a rel="next" Link target back as afterId to continue.
+      parameters:
+        - name: afterId
+          in: query
+          required: false
+          description: Return rows whose id is strictly greater than this exclusive cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rows returned; defaults to 50 and cannot exceed 100.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         "200":
-          description: Payments returned
+          description: Bounded payment page returned in ascending id order
+          headers:
+            Link:
+              description: >-
+                Present only when another row was observed. The rel="next"
+                target uses the final returned id as the next exclusive cursor.
+              schema:
+                type: string
+              example: '</payments?afterId=201&limit=50>; rel="next"'
           content:
             application/json:
               schema:
@@ -107,6 +182,21 @@ paths:
                 empty:
                   summary: No payments stored
                   value: []
+        "400":
+          description: Pagination cursor or limit failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidPagination:
+                  summary: Safe pagination failure without rejected values
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /payments
     post:
       operationId: createPayment
       tags: [Payments]
@@ -311,9 +401,39 @@ paths:
       operationId: listTransactions
       tags: [Transactions]
       summary: List transactions
+      description: >-
+        Returns at most limit transactions in ascending id order. Pass the final
+        id from a rel="next" Link target back as afterId to continue.
+      parameters:
+        - name: afterId
+          in: query
+          required: false
+          description: Return rows whose id is strictly greater than this exclusive cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rows returned; defaults to 50 and cannot exceed 100.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         "200":
-          description: Transactions returned
+          description: Bounded transaction page returned in ascending id order
+          headers:
+            Link:
+              description: >-
+                Present only when another row was observed. The rel="next"
+                target uses the final returned id as the next exclusive cursor.
+              schema:
+                type: string
+              example: '</transactions?afterId=301&limit=50>; rel="next"'
           content:
             application/json:
               schema:
@@ -334,6 +454,21 @@ paths:
                 empty:
                   summary: No transactions stored
                   value: []
+        "400":
+          description: Pagination cursor or limit failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidPagination:
+                  summary: Safe pagination failure without rejected values
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /transactions
   /transactions/account/{id}:
     servers:
       - url: http://localhost:8083
@@ -618,7 +753,7 @@ components:
           enum: [One or more request values are invalid.]
         instance:
           type: string
-          enum: [/accounts, /payments, /transactions/account]
+          enum: [/accounts, /payments, /transactions, /transactions/account]
     PaymentIdempotencyConflictProblem:
       type: object
       description: >-
