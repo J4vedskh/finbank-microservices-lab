@@ -9,13 +9,18 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,12 +54,32 @@ class AccountServiceTest {
     }
 
     @Test
-    void findAll_returnsRepositoryResults() {
+    void findAll_usesExclusiveCursorAndBoundedSlice() {
         Account account = new Account("Asha Mehta", new BigDecimal("5000.00"));
-        when(accountRepository.findAll()).thenReturn(List.of(account));
+        account.setId(42L);
+        PageRequest pageRequest = PageRequest.of(0, 2);
+        Slice<Account> expected = new SliceImpl<>(List.of(account), pageRequest, true);
+        when(accountRepository.findByIdGreaterThanOrderByIdAsc(40L, pageRequest))
+                .thenReturn(expected);
 
-        List<Account> result = accountService.findAll();
+        Slice<Account> result = accountService.findAll(40L, 2);
 
-        assertThat(result).containsExactly(account);
+        assertThat(result.getContent()).containsExactly(account);
+        assertThat(result.hasNext()).isTrue();
+        verify(accountRepository).findByIdGreaterThanOrderByIdAsc(40L, pageRequest);
+    }
+
+    @Test
+    void findAll_rejectsInvalidCursorAndLimitBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> accountService.findAll(0L, AccountService.DEFAULT_LIMIT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> accountService.findAll(-1L, AccountService.DEFAULT_LIMIT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> accountService.findAll(null, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> accountService.findAll(null, AccountService.MAX_LIMIT + 1))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(accountRepository);
     }
 }

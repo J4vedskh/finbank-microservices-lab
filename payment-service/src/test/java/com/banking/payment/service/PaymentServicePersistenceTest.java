@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Slice;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -110,6 +111,31 @@ class PaymentServicePersistenceTest {
                 .hasValueSatisfying(payment ->
                         assertThat(payment.getIdempotencyKeyHash()).isNull()
                 );
+    }
+
+    @Test
+    void findAll_usesAscendingExclusiveCursorWithoutCreatingOutboxEvents() {
+        Payment first = paymentRepository.saveAndFlush(payment("a".repeat(64), 1L, 2L));
+        Payment second = paymentRepository.saveAndFlush(payment("b".repeat(64), 3L, 4L));
+        Payment third = paymentRepository.saveAndFlush(payment("c".repeat(64), 5L, 6L));
+        entityManager.clear();
+
+        Slice<Payment> firstPage = paymentService.findAll(null, 2);
+        Slice<Payment> secondPage = paymentService.findAll(
+                firstPage.getContent().get(firstPage.getNumberOfElements() - 1).getId(),
+                2
+        );
+
+        assertThat(firstPage.getContent())
+                .extracting(Payment::getId)
+                .containsExactly(first.getId(), second.getId());
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(secondPage.getContent())
+                .extracting(Payment::getId)
+                .containsExactly(third.getId());
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(paymentRepository.count()).isEqualTo(3);
+        assertThat(paymentOutboxRepository.count()).isZero();
     }
 
     private CreatePaymentRequest request() {

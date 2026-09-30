@@ -42,6 +42,13 @@ bodies, path IDs, idempotency keys, exception messages, or persistence details
 to these handlers. Account-history validation uses the stable
 `/transactions/account` instance rather than reflecting the supplied ID.
 
+Public account, payment, and transaction collection reads use exclusive-ID
+keyset pagination: default limit 50, maximum 100, ascending `id`, and no count
+query. Preserve the JSON array body and emit a fixed-path `rel="next"` Link only
+when another row was observed. Never build that link from forwarded host data or
+unvalidated query strings. The separate transaction account-history route is
+not paginated yet.
+
 ## Payment Outbox Operator Access
 
 The payment service exposes restricted recovery and handoff-inspection routes.

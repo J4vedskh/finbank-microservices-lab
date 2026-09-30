@@ -6,6 +6,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 
@@ -17,7 +19,9 @@ public class AccountApiExceptionHandler {
 
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
-            HttpMessageNotReadableException.class
+            HttpMessageNotReadableException.class,
+            HandlerMethodValidationException.class,
+            MethodArgumentTypeMismatchException.class
     })
     ProblemDetail handleInvalidRequest() {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(

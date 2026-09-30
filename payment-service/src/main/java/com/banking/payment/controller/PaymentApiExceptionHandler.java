@@ -9,6 +9,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 
@@ -24,7 +25,8 @@ public class PaymentApiExceptionHandler {
             MethodArgumentNotValidException.class,
             HttpMessageNotReadableException.class,
             MissingRequestHeaderException.class,
-            HandlerMethodValidationException.class
+            HandlerMethodValidationException.class,
+            MethodArgumentTypeMismatchException.class
     })
     ProblemDetail handleInvalidRequest() {
         return problem(

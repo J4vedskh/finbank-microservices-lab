@@ -50,12 +50,13 @@ flowchart TD
 | 2026-09-25 | Public Problem Details | Standardized account/payment validation and payment idempotency-conflict failures as fixed five-field Problem Details, with generic safe wording and no rejected values, keys, framework messages, or persistence data. | `mvn -T 1C clean test` |
 | 2026-09-27 | Public response DTOs | Replaced direct Account, Payment, and Transaction entity serialization with explicit immutable response records for all six public operations, while preserving the existing JSON fields and closing each OpenAPI schema to additional properties. | `mvn -T 1C clean test` |
 | 2026-09-29 | Transaction account ID validation | Rejected nonpositive and nonnumeric account-history path IDs before service access and returned the same fixed five-field public Problem Details without reflecting the supplied value. | `mvn -T 1C clean test` |
+| 2026-09-30 | Public keyset pagination | Bounded account, payment, and transaction collection reads with exclusive positive cursors, limit 50 by default and 100 maximum, deterministic id ordering, array-compatible bodies, and standard rel-next Link headers. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add bounded pagination to the public account, payment, and transaction lists. |
+| Backend | Add bounded keyset pagination to transaction account-history reads. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |
