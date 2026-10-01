@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -38,8 +37,22 @@ public class TransactionService {
         return transactionRepository.findByIdGreaterThanOrderByIdAsc(afterId, pageRequest);
     }
 
-    public List<Transaction> findByAccount(Long accountId) {
-        return transactionRepository.findByFromAccountOrToAccount(accountId, accountId);
+    @Transactional(readOnly = true)
+    public Slice<Transaction> findByAccount(Long accountId, Long afterId, int limit) {
+        if (accountId == null || accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        validateListRequest(afterId, limit);
+
+        PageRequest pageRequest = PageRequest.of(0, limit);
+        if (afterId == null) {
+            return transactionRepository.findAccountHistory(accountId, pageRequest);
+        }
+        return transactionRepository.findAccountHistoryAfterId(
+                accountId,
+                afterId,
+                pageRequest
+        );
     }
 
     private void validateListRequest(Long afterId, int limit) {

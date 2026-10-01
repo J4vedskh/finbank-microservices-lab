@@ -92,11 +92,17 @@ class TransactionControllerTest {
     }
 
     @Test
-    void listAccountHistory_delegatesPathIdToService() throws Exception {
-        when(transactionService.findByAccount(7L)).thenReturn(List.of(savedTransaction()));
+    void listAccountHistory_usesDefaultBoundedSliceWithoutNextLink() throws Exception {
+        when(transactionService.findByAccount(7L, null, TransactionService.DEFAULT_LIMIT))
+                .thenReturn(new SliceImpl<>(
+                        List.of(savedTransaction()),
+                        PageRequest.of(0, TransactionService.DEFAULT_LIMIT),
+                        false
+                ));
 
         mockMvc.perform(get("/transactions/account/7"))
                 .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.LINK))
                 .andExpect(jsonPath("$[0].length()").value(7))
                 .andExpect(jsonPath("$[0].id").value(99))
                 .andExpect(jsonPath("$[0].paymentId").value(42))
@@ -107,7 +113,51 @@ class TransactionControllerTest {
                         .value("2026-09-27T09:30:00Z"))
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"));
 
-        verify(transactionService).findByAccount(7L);
+        verify(transactionService).findByAccount(7L, null, TransactionService.DEFAULT_LIMIT);
+    }
+
+    @Test
+    void listAccountHistory_withCursorOnFinalPageOmitsNextLink() throws Exception {
+        when(transactionService.findByAccount(7L, 50L, 2)).thenReturn(new SliceImpl<>(
+                List.of(savedTransaction()),
+                PageRequest.of(0, 2),
+                false
+        ));
+
+        mockMvc.perform(get("/transactions/account/7")
+                        .param("afterId", "50")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.LINK));
+
+        verify(transactionService).findByAccount(7L, 50L, 2);
+    }
+
+    @Test
+    void listAccountHistory_withCursorAndAdditionalRowsAddsExactNextLink() throws Exception {
+        Transaction first = savedTransaction();
+        first.setId(99L);
+        Transaction second = savedTransaction();
+        second.setId(100L);
+        when(transactionService.findByAccount(7L, 50L, 2)).thenReturn(new SliceImpl<>(
+                List.of(first, second),
+                PageRequest.of(0, 2),
+                true
+        ));
+
+        mockMvc.perform(get("/transactions/account/7")
+                        .param("afterId", "50")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.LINK,
+                        "</transactions/account/7?afterId=100&limit=2>; rel=\"next\""
+                ))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(99))
+                .andExpect(jsonPath("$[1].id").value(100));
+
+        verify(transactionService).findByAccount(7L, 50L, 2);
     }
 
     @ParameterizedTest
@@ -125,6 +175,42 @@ class TransactionControllerTest {
     @Test
     void listAccountHistory_nonNumericIdReturnsSafeProblemWithoutSideEffects() throws Exception {
         assertInvalidAccountHistoryProblem("not-a-number")
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(MethodArgumentTypeMismatchException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void listAccountHistory_nonPositiveAfterIdReturnsSafeProblemWithoutServiceCall(
+            String afterId
+    ) throws Exception {
+        assertInvalidAccountHistoryProblem("7", "afterId", afterId)
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(HandlerMethodValidationException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "101"})
+    void listAccountHistory_outOfRangeLimitReturnsSafeProblemWithoutServiceCall(
+            String limit
+    ) throws Exception {
+        assertInvalidAccountHistoryProblem("7", "limit", limit)
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(HandlerMethodValidationException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"afterId", "limit"})
+    void listAccountHistory_nonNumericQueryReturnsSafeProblemWithoutServiceCall(
+            String parameterName
+    ) throws Exception {
+        assertInvalidAccountHistoryProblem("7", parameterName, "not-a-number")
                 .andExpect(result -> assertThat(result.getResolvedException())
                         .isInstanceOf(MethodArgumentTypeMismatchException.class));
 
@@ -168,7 +254,19 @@ class TransactionControllerTest {
     }
 
     private ResultActions assertInvalidAccountHistoryProblem(String accountId) throws Exception {
-        return mockMvc.perform(get("/transactions/account/{id}", accountId))
+        return assertInvalidAccountHistoryProblem(accountId, null, null);
+    }
+
+    private ResultActions assertInvalidAccountHistoryProblem(
+            String accountId,
+            String parameterName,
+            String parameterValue
+    ) throws Exception {
+        var request = get("/transactions/account/{id}", accountId);
+        if (parameterName != null) {
+            request.param(parameterName, parameterValue);
+        }
+        return mockMvc.perform(request)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(
                         MediaType.APPLICATION_PROBLEM_JSON

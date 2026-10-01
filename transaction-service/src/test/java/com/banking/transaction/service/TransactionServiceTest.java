@@ -204,15 +204,62 @@ class TransactionServiceTest {
     }
 
     @Test
-    void findByAccount_queriesBothSidesOfAccountHistory() {
+    void findByAccount_withoutCursor_queriesBothSidesOfAccountHistoryInAscendingSlices() {
         Transaction transaction = new Transaction();
-        when(transactionRepository.findByFromAccountOrToAccount(7L, 7L))
-                .thenReturn(List.of(transaction));
+        PageRequest pageRequest = PageRequest.of(0, TransactionService.DEFAULT_LIMIT);
+        Slice<Transaction> expected = new SliceImpl<>(List.of(transaction), pageRequest, false);
+        when(transactionRepository.findAccountHistory(7L, pageRequest)).thenReturn(expected);
 
-        List<Transaction> result = transactionService.findByAccount(7L);
+        Slice<Transaction> result = transactionService.findByAccount(
+                7L,
+                null,
+                TransactionService.DEFAULT_LIMIT
+        );
 
-        assertThat(result).containsExactly(transaction);
-        verify(transactionRepository).findByFromAccountOrToAccount(7L, 7L);
+        assertThat(result).isSameAs(expected);
+        verify(transactionRepository).findAccountHistory(7L, pageRequest);
+    }
+
+    @Test
+    void findByAccount_withCursor_queriesOnlyStrictlyLaterHistoryRows() {
+        Transaction transaction = new Transaction();
+        PageRequest pageRequest = PageRequest.of(0, 2);
+        Slice<Transaction> expected = new SliceImpl<>(List.of(transaction), pageRequest, true);
+        when(transactionRepository.findAccountHistoryAfterId(7L, 50L, pageRequest))
+                .thenReturn(expected);
+
+        Slice<Transaction> result = transactionService.findByAccount(7L, 50L, 2);
+
+        assertThat(result).isSameAs(expected);
+        verify(transactionRepository).findAccountHistoryAfterId(7L, 50L, pageRequest);
+    }
+
+    @Test
+    void findByAccount_rejectsInvalidAccountIdCursorOrLimitBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> transactionService.findByAccount(
+                null,
+                null,
+                TransactionService.DEFAULT_LIMIT
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findByAccount(
+                0L,
+                null,
+                TransactionService.DEFAULT_LIMIT
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findByAccount(
+                7L,
+                0L,
+                TransactionService.DEFAULT_LIMIT
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findByAccount(7L, 1L, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findByAccount(
+                7L,
+                1L,
+                TransactionService.MAX_LIMIT + 1
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(transactionRepository);
     }
 
     private Transaction completedTransaction(

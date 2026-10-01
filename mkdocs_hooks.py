@@ -96,10 +96,27 @@ PUBLIC_VALIDATION_INSTANCES = {
     "/transactions",
     "/transactions/account",
 }
-PUBLIC_PAGINATION_LINKS = {
-    "/accounts": '</accounts?afterId=202&limit=50>; rel="next"',
-    "/payments": '</payments?afterId=201&limit=50>; rel="next"',
-    "/transactions": '</transactions?afterId=301&limit=50>; rel="next"',
+PUBLIC_PAGINATION_CONTRACTS = {
+    "/accounts": {
+        "parameters": {("afterId", "query"), ("limit", "query")},
+        "link": '</accounts?afterId=202&limit=50>; rel="next"',
+        "validation_instance": "/accounts",
+    },
+    "/payments": {
+        "parameters": {("afterId", "query"), ("limit", "query")},
+        "link": '</payments?afterId=201&limit=50>; rel="next"',
+        "validation_instance": "/payments",
+    },
+    "/transactions": {
+        "parameters": {("afterId", "query"), ("limit", "query")},
+        "link": '</transactions?afterId=301&limit=50>; rel="next"',
+        "validation_instance": "/transactions",
+    },
+    "/transactions/account/{id}": {
+        "parameters": {("id", "path"), ("afterId", "query"), ("limit", "query")},
+        "link": '</transactions/account/101?afterId=301&limit=50>; rel="next"',
+        "validation_instance": "/transactions/account",
+    },
 }
 VENDOR_FILES = {
     "LICENSE.txt",
@@ -238,7 +255,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.11.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.12.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -339,13 +356,13 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if expected_validation_example not in validation_examples:
         raise PluginError("Transaction account-history validation example changed")
 
-    for path, expected_link in PUBLIC_PAGINATION_LINKS.items():
+    for path, pagination_contract in PUBLIC_PAGINATION_CONTRACTS.items():
         operation = paths.get(path, {}).get("get", {})
         parameters = {
             (parameter.get("name"), parameter.get("in")): parameter
             for parameter in operation.get("parameters", [])
         }
-        if set(parameters) != {("afterId", "query"), ("limit", "query")}:
+        if set(parameters) != pagination_contract["parameters"]:
             raise PluginError(f"GET {path} pagination parameter inventory changed")
 
         cursor = parameters[("afterId", "query")]
@@ -372,7 +389,10 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
 
         responses = operation.get("responses", {})
         link = responses.get("200", {}).get("headers", {}).get("Link", {})
-        if link.get("schema", {}).get("type") != "string" or link.get("example") != expected_link:
+        if (
+            link.get("schema", {}).get("type") != "string"
+            or link.get("example") != pagination_contract["link"]
+        ):
             raise PluginError(f"GET {path} next-link contract changed")
 
         validation_media = (
@@ -389,7 +409,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
             "title": "Request validation failed",
             "status": 400,
             "detail": "One or more request values are invalid.",
-            "instance": path,
+            "instance": pagination_contract["validation_instance"],
         }
         problem_examples = [
             example.get("value")

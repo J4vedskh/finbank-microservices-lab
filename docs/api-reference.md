@@ -37,19 +37,22 @@ The account-history response uses the fixed route-family instance
 
 ### Public Collection Pagination
 
-`GET /accounts`, `GET /payments`, and `GET /transactions` return at most 50
-rows by default and accept an optional exclusive `afterId` plus a `limit` from
-1 through 100. Results are always ordered by generated `id` ascending, so a
-continuation never repeats the cursor row and does not require a total-count
-query.
+`GET /accounts`, `GET /payments`, `GET /transactions`, and
+`GET /transactions/account/{id}` return at most 50 rows by default and accept
+an optional exclusive `afterId` plus a `limit` from 1 through 100. The
+account-history route keeps its required positive account ID while paging.
+Results are always ordered by generated `id` ascending, so a continuation never
+repeats the cursor row and does not require a total-count query.
 
 The response body remains the existing JSON array. When another row was
 observed, the response includes one standard `Link` header such as
 `</accounts?afterId=202&limit=50>; rel="next"`; follow that target to continue.
-The final page omits `Link`. Pagination is not a frozen snapshot, so rows created
-later with larger IDs can appear on a later request. This OpenAPI 0.11.0 change
-bounds legacy no-query requests to the first 50 rows without changing their
-array response shape.
+For account history, the target keeps the same validated account ID, for example
+`</transactions/account/101?afterId=301&limit=50>; rel="next"`. The final page
+omits `Link`. Pagination is not a frozen snapshot, so rows created later with
+larger IDs can appear on a later request. This OpenAPI 0.12.0 change bounds
+legacy no-query requests to the first 50 rows without changing their array
+response shape.
 
 Payment idempotency reuse conflicts use
 `urn:finbank:problem:idempotency-key-conflict` with HTTP `409`. Neither response
