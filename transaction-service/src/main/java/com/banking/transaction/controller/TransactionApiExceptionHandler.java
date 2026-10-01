@@ -27,7 +27,11 @@ public class TransactionApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
-        return validationProblem(instanceForParameter(exception.getParameter().getParameterName()));
+        URI instance = exception.getParameter().getMethod() != null
+                && "byAccount".equals(exception.getParameter().getMethod().getName())
+                ? ACCOUNT_HISTORY_INSTANCE
+                : instanceForParameter(exception.getParameter().getParameterName());
+        return validationProblem(instance);
     }
 
     private URI instanceForParameter(String parameterName) {

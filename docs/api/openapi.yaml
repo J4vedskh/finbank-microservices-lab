@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.11.0
+  version: 0.12.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -477,6 +477,10 @@ paths:
       operationId: listTransactionsByAccount
       tags: [Transactions]
       summary: List transactions involving one account
+      description: >-
+        Returns at most limit transactions involving the requested account in
+        ascending id order. Pass the final id from a rel="next" Link target back
+        as afterId to continue for the same account.
       parameters:
         - name: id
           in: path
@@ -485,9 +489,36 @@ paths:
             type: integer
             format: int64
             minimum: 1
+        - name: afterId
+          in: query
+          required: false
+          description: Return rows whose id is strictly greater than this exclusive cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rows returned; defaults to 50 and cannot exceed 100.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         "200":
-          description: Matching transactions returned
+          description: Bounded transaction account-history page returned in ascending id order
+          headers:
+            Link:
+              description: >-
+                Present only when another row was observed. The rel="next"
+                target preserves the requested account and uses the final
+                returned id as the next exclusive cursor.
+              schema:
+                type: string
+              example: '</transactions/account/101?afterId=301&limit=50>; rel="next"'
           content:
             application/json:
               schema:
@@ -509,14 +540,14 @@ paths:
                   summary: No transactions involve the requested account
                   value: []
         "400":
-          description: Account id was nonnumeric or not positive
+          description: Account id, pagination cursor, or limit failed validation
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/PublicValidationProblem"
               examples:
-                invalidAccountId:
-                  summary: Safe path validation failure without the supplied account id
+                invalidRequestValue:
+                  summary: Safe path or query validation failure without rejected values
                   value:
                     type: urn:finbank:problem:validation-failed
                     title: Request validation failed

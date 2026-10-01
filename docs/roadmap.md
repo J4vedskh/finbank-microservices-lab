@@ -49,6 +49,7 @@ gantt
 | 22 | Completed: replace public JPA entity serialization with explicit response DTOs |
 | 23 | Completed: validate transaction account-history IDs with public Problem Details |
 | 24 | Completed: add bounded keyset pagination to public collection endpoints |
+| 25 | Completed: add bounded keyset pagination to transaction account-history reads |
 
 ## Commit Standard
 

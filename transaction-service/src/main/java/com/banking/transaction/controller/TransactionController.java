@@ -48,9 +48,26 @@ public class TransactionController {
     }
 
     @GetMapping("/account/{id}")
-    public List<TransactionResponse> byAccount(@PathVariable @Positive Long id) {
-        return transactionService.findByAccount(id).stream()
-                .map(TransactionResponse::from)
-                .toList();
+    public ResponseEntity<List<TransactionResponse>> byAccount(
+            @PathVariable @Positive Long id,
+            @RequestParam(required = false) @Positive Long afterId,
+            @RequestParam(defaultValue = "50")
+            @Min(1) @Max(TransactionService.MAX_LIMIT) int limit
+    ) {
+        Slice<TransactionResponse> transactions = transactionService.findByAccount(id, afterId, limit)
+                .map(TransactionResponse::from);
+
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok();
+        if (transactions.hasNext() && !transactions.isEmpty()) {
+            Long lastId = transactions.getContent()
+                    .get(transactions.getNumberOfElements() - 1)
+                    .id();
+            response.header(
+                    HttpHeaders.LINK,
+                    "</transactions/account/%d?afterId=%d&limit=%d>; rel=\"next\""
+                            .formatted(id, lastId, limit)
+            );
+        }
+        return response.body(transactions.getContent());
     }
 }

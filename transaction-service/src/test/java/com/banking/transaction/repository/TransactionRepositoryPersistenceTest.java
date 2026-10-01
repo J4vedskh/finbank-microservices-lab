@@ -13,6 +13,7 @@ import org.springframework.data.domain.Slice;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,14 +46,17 @@ class TransactionRepositoryPersistenceTest {
         assertThat(saved.getCreatedAt()).isNotNull();
         entityManager.clear();
 
-        List<Transaction> sourceHistory =
-                transactionRepository.findByFromAccountOrToAccount(1L, 1L);
-        List<Transaction> destinationHistory =
-                transactionRepository.findByFromAccountOrToAccount(2L, 2L);
+        PageRequest pageRequest = PageRequest.of(0, TransactionService.DEFAULT_LIMIT);
+        Slice<Transaction> sourceHistory =
+                transactionRepository.findAccountHistory(1L, pageRequest);
+        Slice<Transaction> destinationHistory =
+                transactionRepository.findAccountHistory(2L, pageRequest);
 
         assertThat(transactionRepository.count()).isEqualTo(1);
-        assertThat(sourceHistory).singleElement().satisfies(this::assertPersistedTransaction);
-        assertThat(destinationHistory).singleElement().satisfies(this::assertPersistedTransaction);
+        assertThat(sourceHistory.getContent()).singleElement()
+                .satisfies(this::assertPersistedTransaction);
+        assertThat(destinationHistory.getContent()).singleElement()
+                .satisfies(this::assertPersistedTransaction);
     }
 
     @Test
@@ -96,6 +100,41 @@ class TransactionRepositoryPersistenceTest {
         assertThat(secondPage.hasNext()).isFalse();
         assertThat(secondPage.getContent()).extracting(Transaction::getId)
                 .containsExactly(third.getId());
+    }
+
+    @Test
+    void accountHistoryKeysetPagination_isAscendingExclusiveAndDoesNotDuplicateRowsAcrossPages() {
+        Transaction sourceFirst = transactionRepository.saveAndFlush(transaction(201L, 7L, 1L));
+        transactionRepository.saveAndFlush(transaction(202L, 8L, 9L));
+        Transaction destinationSecond = transactionRepository.saveAndFlush(transaction(203L, 2L, 7L));
+        Transaction sourceThird = transactionRepository.saveAndFlush(transaction(204L, 7L, 3L));
+        transactionRepository.saveAndFlush(transaction(205L, 4L, 5L));
+        entityManager.clear();
+
+        PageRequest pageRequest = PageRequest.of(0, 2);
+        Slice<Transaction> firstPage = transactionRepository.findAccountHistory(7L, pageRequest);
+        Slice<Transaction> secondPage = transactionRepository.findAccountHistoryAfterId(
+                7L,
+                destinationSecond.getId(),
+                pageRequest
+        );
+
+        assertThat(firstPage.hasNext()).isTrue();
+        assertThat(firstPage.getContent()).extracting(Transaction::getId)
+                .containsExactly(sourceFirst.getId(), destinationSecond.getId());
+        assertThat(secondPage.hasNext()).isFalse();
+        assertThat(secondPage.getContent()).extracting(Transaction::getId)
+                .containsExactly(sourceThird.getId());
+        assertThat(Stream.concat(
+                firstPage.getContent().stream(),
+                secondPage.getContent().stream()
+        ).map(Transaction::getId).toList())
+                .containsExactly(
+                        sourceFirst.getId(),
+                        destinationSecond.getId(),
+                        sourceThird.getId()
+                )
+                .doesNotHaveDuplicates();
     }
 
     private void assertPersistedTransaction(Transaction transaction) {
