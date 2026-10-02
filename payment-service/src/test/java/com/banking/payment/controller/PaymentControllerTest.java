@@ -3,6 +3,7 @@ package com.banking.payment.controller;
 import com.banking.payment.api.CreatePaymentRequest;
 import com.banking.payment.entity.Payment;
 import com.banking.payment.service.PaymentIdempotencyConflictException;
+import com.banking.payment.service.PaymentNotFoundException;
 import com.banking.payment.service.PaymentService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -89,6 +90,60 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$[0].idempotencyKeyHash").doesNotExist());
 
         verify(paymentService).findAll(42L, 2);
+    }
+
+    @Test
+    void getPaymentById_returnsOnlyPublicResponseFields() throws Exception {
+        when(paymentService.findById(42L)).thenReturn(savedPayment());
+
+        mockMvc.perform(get("/payments/42"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.id").value(42))
+                .andExpect(jsonPath("$.fromAccount").value(1))
+                .andExpect(jsonPath("$.toAccount").value(2))
+                .andExpect(jsonPath("$.amount").value(750.00))
+                .andExpect(jsonPath("$.status").value("CREATED"))
+                .andExpect(jsonPath("$.idempotencyKeyHash").doesNotExist());
+
+        verify(paymentService).findById(42L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "not-a-number"})
+    void getPaymentById_invalidIdReturnsSafeProblemWithoutServiceCall(String id) throws Exception {
+        assertInvalidPaymentProblem(mockMvc.perform(get("/payments/" + id)));
+
+        verifyNoInteractions(paymentService);
+    }
+
+    @Test
+    void getPaymentById_missingPaymentReturnsSafeNotFoundProblem() throws Exception {
+        when(paymentService.findById(404L)).thenThrow(new PaymentNotFoundException());
+
+        mockMvc.perform(get("/payments/404"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:resource-not-found"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Resource not found"))
+                .andExpect(jsonPath("$.detail")
+                        .value("The requested resource was not found."))
+                .andExpect(jsonPath("$.instance").value("/payments"))
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKeyHash").doesNotExist())
+                .andExpect(jsonPath("$.fromAccount").doesNotExist())
+                .andExpect(jsonPath("$.toAccount").doesNotExist())
+                .andExpect(jsonPath("$.amount").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+
+        verify(paymentService).findById(404L);
     }
 
     @ParameterizedTest

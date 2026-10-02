@@ -52,12 +52,13 @@ flowchart TD
 | 2026-09-29 | Transaction account ID validation | Rejected nonpositive and nonnumeric account-history path IDs before service access and returned the same fixed five-field public Problem Details without reflecting the supplied value. | `mvn -T 1C clean test` |
 | 2026-09-30 | Public keyset pagination | Bounded account, payment, and transaction collection reads with exclusive positive cursors, limit 50 by default and 100 maximum, deterministic id ordering, array-compatible bodies, and standard rel-next Link headers. | `mvn -T 1C clean test` |
 | 2026-10-01 | Account-history keyset pagination | Bounded transaction account-history reads with the same exclusive positive cursor and limits, deterministic id ordering, array-compatible bodies, and a same-account rel-next Link contract. | `mvn -T 1C clean test` |
+| 2026-10-02 | Single-resource account and payment lookups | Added positive-ID account and payment lookups with explicit response DTOs and fixed safe public `404` Problem Details that never reflect the requested identifier. | `mvn -T 1C clean test` |
 
 ## Upcoming Focus
 
 | Track | Next useful increment |
 | --- | --- |
-| Backend | Add single-resource account and payment lookup with safe public 404 Problem Details. |
+| Backend | Add single-resource transaction lookup with safe public 404 Problem Details. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
 | Observability | Add a metrics and tracing overview with dashboard examples. |

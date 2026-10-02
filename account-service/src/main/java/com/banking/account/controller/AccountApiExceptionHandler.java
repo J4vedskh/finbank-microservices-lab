@@ -1,5 +1,6 @@
 package com.banking.account.controller;
 
+import com.banking.account.service.AccountNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -15,6 +16,8 @@ import java.net.URI;
 public class AccountApiExceptionHandler {
     private static final URI VALIDATION_TYPE =
             URI.create("urn:finbank:problem:validation-failed");
+    private static final URI NOT_FOUND_TYPE =
+            URI.create("urn:finbank:problem:resource-not-found");
     private static final URI ACCOUNT_INSTANCE = URI.create("/accounts");
 
     @ExceptionHandler({
@@ -30,6 +33,18 @@ public class AccountApiExceptionHandler {
         );
         problem.setType(VALIDATION_TYPE);
         problem.setTitle("Request validation failed");
+        problem.setInstance(ACCOUNT_INSTANCE);
+        return problem;
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    ProblemDetail handleNotFound() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                "The requested resource was not found."
+        );
+        problem.setType(NOT_FOUND_TYPE);
+        problem.setTitle("Resource not found");
         problem.setInstance(ACCOUNT_INSTANCE);
         return problem;
     }

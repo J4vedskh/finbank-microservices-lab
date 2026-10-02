@@ -17,11 +17,11 @@ response evolution.
 ### Example Policy
 
 Every public `200` response includes a named, schema-validated example. List
-operations show both populated and empty results, while create operations show
-the immediate server-owned response. All names, identifiers, balances, amounts,
-and timestamps are synthetic demo data; examples never contain idempotency
-digests, credentials, tokens, operator metadata, event payloads, or recovery
-details.
+operations show both populated and empty results, while create and lookup
+operations show the immediate server-owned response. All names, identifiers,
+balances, amounts, and timestamps are synthetic demo data; examples never
+contain idempotency digests, credentials, tokens, operator metadata, event
+payloads, or recovery details.
 
 ### Public Problem Details
 
@@ -34,6 +34,13 @@ nonnumeric or nonpositive transaction account IDs all use
 
 The account-history response uses the fixed route-family instance
 `/transactions/account`; it never echoes the supplied path segment.
+
+Account and payment lookups reject nonnumeric or nonpositive IDs with the same
+fixed HTTP `400` validation payload, using `/accounts` or `/payments` as the
+instance. A missing account or payment returns HTTP `404` with the fixed
+five-field `urn:finbank:problem:resource-not-found` payload. It uses the generic
+detail `The requested resource was not found.` and never reflects the requested
+identifier or reveals persistence details.
 
 ### Public Collection Pagination
 
@@ -50,9 +57,9 @@ observed, the response includes one standard `Link` header such as
 For account history, the target keeps the same validated account ID, for example
 `</transactions/account/101?afterId=301&limit=50>; rel="next"`. The final page
 omits `Link`. Pagination is not a frozen snapshot, so rows created later with
-larger IDs can appear on a later request. This OpenAPI 0.12.0 change bounds
-legacy no-query requests to the first 50 rows without changing their array
-response shape.
+larger IDs can appear on a later request. The OpenAPI 0.12.0 pagination change
+bounds legacy no-query requests to the first 50 rows without changing their
+array response shape.
 
 Payment idempotency reuse conflicts use
 `urn:finbank:problem:idempotency-key-conflict` with HTTP `409`. Neither response
@@ -62,9 +69,9 @@ exception names, persistence details, or stack traces.
 
 ### Public Response DTO Boundary
 
-All six public operations return explicit immutable response records rather than
-serializing JPA entities. Controllers map service results field by field while
-services and repositories keep their existing persistence models:
+All eight public operations return explicit immutable response records rather
+than serializing JPA entities. Controllers map service results field by field
+while services and repositories keep their existing persistence models:
 
 | Response | Exact public fields |
 | --- | --- |
@@ -73,11 +80,11 @@ services and repositories keep their existing persistence models:
 | Transaction | `id`, `paymentId`, `fromAccount`, `toAccount`, `amount`, `createdAt`, `status` |
 
 The OpenAPI response schemas reject additional properties, and MVC tests assert
-the same exact JSON field counts for every list, create, and account-history
-response. Adding a persistence getter no longer adds an API field automatically;
-new public fields require an explicit DTO, contract, example, and test change.
-Operator endpoints keep their existing dedicated response records and are not
-part of this public boundary.
+the same exact JSON field counts for every list, create, lookup, and
+account-history response. Adding a persistence getter no longer adds an API
+field automatically; new public fields require an explicit DTO, contract,
+example, and test change. Operator endpoints keep their existing dedicated
+response records and are not part of this public boundary.
 
 ## Account Service
 
@@ -86,6 +93,7 @@ Base URL: `http://localhost:8081`
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/accounts` | List accounts |
+| `GET` | `/accounts/{id}` | Get one account by a positive ID |
 | `POST` | `/accounts` | Create an account |
 
 Example request:
@@ -104,6 +112,7 @@ Base URL: `http://localhost:8082`
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/payments` | List payments |
+| `GET` | `/payments/{id}` | Get one payment by a positive ID |
 | `POST` | `/payments` | Create a payment with a required `Idempotency-Key` header and durably queue its Kafka event |
 | `POST` | `/internal/payment-outbox/{eventId}/recovery` | Re-arm an exhausted outbox event through restricted operator access |
 | `GET` | `/internal/payment-outbox/dead-letter-handoffs` | Inspect bounded safe metadata for retained local handoffs |

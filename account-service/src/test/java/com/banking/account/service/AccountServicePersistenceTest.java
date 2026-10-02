@@ -28,6 +28,21 @@ class AccountServicePersistenceTest {
     private TestEntityManager entityManager;
 
     @Test
+    void findById_readsPersistedAccountAfterEntityManagerClear() {
+        Account created = accountService.create(
+                new CreateAccountRequest("Asha Mehta", new BigDecimal("5000.00"))
+        );
+        entityManager.flush();
+        entityManager.clear();
+
+        Account found = accountService.findById(created.getId());
+
+        assertThat(found.getId()).isEqualTo(created.getId());
+        assertThat(found.getCustomerName()).isEqualTo("Asha Mehta");
+        assertThat(found.getBalance()).isEqualByComparingTo("5000.00");
+    }
+
+    @Test
     void create_persistsGeneratedIdentityAndSupportsListing() {
         Account created = accountService.create(
                 new CreateAccountRequest("Asha Mehta", new BigDecimal("5000.00"))

@@ -138,6 +138,22 @@ class PaymentServicePersistenceTest {
         assertThat(paymentOutboxRepository.count()).isZero();
     }
 
+    @Test
+    void findById_returnsPersistedPaymentWithoutCreatingOutboxEvents() {
+        Payment saved = paymentRepository.saveAndFlush(payment("a".repeat(64), 1L, 2L));
+        entityManager.clear();
+
+        Payment found = paymentService.findById(saved.getId());
+
+        assertThat(found.getId()).isEqualTo(saved.getId());
+        assertThat(found.getFromAccount()).isEqualTo(1L);
+        assertThat(found.getToAccount()).isEqualTo(2L);
+        assertThat(found.getAmount()).isEqualByComparingTo("750.00");
+        assertThat(found.getStatus()).isEqualTo("CREATED");
+        assertThat(paymentRepository.count()).isEqualTo(1);
+        assertThat(paymentOutboxRepository.count()).isZero();
+    }
+
     private CreatePaymentRequest request() {
         return new CreatePaymentRequest(1L, 2L, new BigDecimal("750.00"));
     }
