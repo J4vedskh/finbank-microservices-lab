@@ -1,6 +1,7 @@
 package com.banking.payment.controller;
 
 import com.banking.payment.service.PaymentIdempotencyConflictException;
+import com.banking.payment.service.PaymentNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -19,6 +20,8 @@ public class PaymentApiExceptionHandler {
             URI.create("urn:finbank:problem:validation-failed");
     private static final URI IDEMPOTENCY_CONFLICT_TYPE =
             URI.create("urn:finbank:problem:idempotency-key-conflict");
+    private static final URI RESOURCE_NOT_FOUND_TYPE =
+            URI.create("urn:finbank:problem:resource-not-found");
     private static final URI PAYMENT_INSTANCE = URI.create("/payments");
 
     @ExceptionHandler({
@@ -45,6 +48,17 @@ public class PaymentApiExceptionHandler {
                 IDEMPOTENCY_CONFLICT_TYPE,
                 "Idempotency key conflict",
                 "The Idempotency-Key is already associated with a different payment request.",
+                PAYMENT_INSTANCE
+        );
+    }
+
+    @ExceptionHandler(PaymentNotFoundException.class)
+    ProblemDetail handlePaymentNotFound() {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                RESOURCE_NOT_FOUND_TYPE,
+                "Resource not found",
+                "The requested resource was not found.",
                 PAYMENT_INSTANCE
         );
     }

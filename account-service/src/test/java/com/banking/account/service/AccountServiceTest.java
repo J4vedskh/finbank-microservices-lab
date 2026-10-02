@@ -15,6 +15,7 @@ import org.springframework.data.domain.SliceImpl;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,6 +32,40 @@ class AccountServiceTest {
 
     @InjectMocks
     private AccountService accountService;
+
+    @Test
+    void findById_returnsRepositoryAccount() {
+        Account account = new Account("Asha Mehta", new BigDecimal("5000.00"));
+        account.setId(42L);
+        when(accountRepository.findById(42L)).thenReturn(Optional.of(account));
+
+        Account result = accountService.findById(42L);
+
+        assertThat(result).isSameAs(account);
+        verify(accountRepository).findById(42L);
+    }
+
+    @Test
+    void findById_missingAccountThrowsOwnedException() {
+        when(accountRepository.findById(42L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountService.findById(42L))
+                .isInstanceOf(AccountNotFoundException.class);
+
+        verify(accountRepository).findById(42L);
+    }
+
+    @Test
+    void findById_rejectsNullOrNonpositiveIdBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> accountService.findById(null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> accountService.findById(0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> accountService.findById(-1L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(accountRepository);
+    }
 
     @Test
     void create_mapsClientInputWithoutAcceptingAnId() {

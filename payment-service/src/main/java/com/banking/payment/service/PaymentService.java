@@ -41,6 +41,15 @@ public class PaymentService {
         return paymentRepository.findByIdGreaterThanOrderByIdAsc(afterId, pageRequest);
     }
 
+    @Transactional(readOnly = true)
+    public Payment findById(Long id) {
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("payment id must be positive");
+        }
+        return paymentRepository.findById(id)
+                .orElseThrow(PaymentNotFoundException::new);
+    }
+
     public Payment create(String idempotencyKey, CreatePaymentRequest request) {
         String idempotencyKeyHash = hash(idempotencyKey);
 

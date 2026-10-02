@@ -22,9 +22,15 @@ EXPECTED_OPERATIONS = {
         "get": "listAccounts",
         "post": "createAccount",
     },
+    "/accounts/{id}": {
+        "get": "getAccountById",
+    },
     "/payments": {
         "get": "listPayments",
         "post": "createPayment",
+    },
+    "/payments/{id}": {
+        "get": "getPaymentById",
     },
     "/internal/payment-outbox/{eventId}/recovery": {
         "post": "recoverPaymentOutboxEvent",
@@ -41,7 +47,9 @@ EXPECTED_OPERATIONS = {
 }
 EXPECTED_SERVERS = {
     "/accounts": "http://localhost:8081",
+    "/accounts/{id}": "http://localhost:8081",
     "/payments": "http://localhost:8082",
+    "/payments/{id}": "http://localhost:8082",
     "/internal/payment-outbox/{eventId}/recovery": "https://localhost:8082",
     "/internal/payment-outbox/dead-letter-handoffs": "https://localhost:8082",
     "/transactions": "http://localhost:8083",
@@ -64,7 +72,9 @@ EXPECTED_SECURITY_SCHEMES = {
 }
 PUBLIC_PATHS = {
     "/accounts",
+    "/accounts/{id}",
     "/payments",
+    "/payments/{id}",
     "/transactions",
     "/transactions/account/{id}",
 }
@@ -73,6 +83,7 @@ PUBLIC_SCHEMAS = {
     "CreateAccountRequest",
     "Payment",
     "PaymentIdempotencyConflictProblem",
+    "PublicNotFoundProblem",
     "CreatePaymentRequest",
     "PublicValidationProblem",
     "Transaction",
@@ -117,6 +128,37 @@ PUBLIC_PAGINATION_CONTRACTS = {
         "link": '</transactions/account/101?afterId=301&limit=50>; rel="next"',
         "validation_instance": "/transactions/account",
     },
+}
+PUBLIC_LOOKUP_CONTRACTS = {
+    "/accounts/{id}": {
+        "response_schema": "Account",
+        "success_example": {
+            "id": 101,
+            "customerName": "Demo Customer",
+            "balance": 5000.00,
+        },
+        "validation_instance": "/accounts",
+        "not_found_instance": "/accounts",
+    },
+    "/payments/{id}": {
+        "response_schema": "Payment",
+        "success_example": {
+            "id": 201,
+            "fromAccount": 101,
+            "toAccount": 202,
+            "amount": 750.00,
+            "status": "PUBLISHED",
+        },
+        "validation_instance": "/payments",
+        "not_found_instance": "/payments",
+    },
+}
+PUBLIC_NOT_FOUND_INSTANCES = {"/accounts", "/payments"}
+PUBLIC_NOT_FOUND_PROBLEM = {
+    "type": "urn:finbank:problem:resource-not-found",
+    "title": "Resource not found",
+    "status": 404,
+    "detail": "The requested resource was not found.",
 }
 VENDOR_FILES = {
     "LICENSE.txt",
@@ -255,7 +297,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.12.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.13.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})
@@ -356,6 +398,8 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if expected_validation_example not in validation_examples:
         raise PluginError("Transaction account-history validation example changed")
 
+    _validate_public_lookup_contracts(paths, schemas)
+
     for path, pagination_contract in PUBLIC_PAGINATION_CONTRACTS.items():
         operation = paths.get(path, {}).get("get", {})
         parameters = {
@@ -418,6 +462,99 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
         ]
         if expected_problem not in problem_examples:
             raise PluginError(f"GET {path} pagination validation example changed")
+
+
+def _validate_public_lookup_contracts(
+        paths: dict[str, Any],
+        schemas: dict[str, Any]
+) -> None:
+    not_found_problem = schemas.get("PublicNotFoundProblem", {})
+    expected_problem_fields = {"type", "title", "status", "detail", "instance"}
+    if (
+        not_found_problem.get("additionalProperties") is not False
+        or set(not_found_problem.get("required", [])) != expected_problem_fields
+        or set(not_found_problem.get("properties", {})) != expected_problem_fields
+    ):
+        raise PluginError("The public not-found Problem Details schema changed")
+
+    for field, expected in PUBLIC_NOT_FOUND_PROBLEM.items():
+        if not_found_problem.get("properties", {}).get(field, {}).get("enum") != [expected]:
+            raise PluginError("The public not-found Problem Details meaning changed")
+    if (
+        not_found_problem.get("properties", {}).get("status", {}).get("format") != "int32"
+        or set(not_found_problem.get("properties", {}).get("instance", {}).get("enum", []))
+        != PUBLIC_NOT_FOUND_INSTANCES
+    ):
+        raise PluginError("The public not-found Problem Details instance allowlist changed")
+
+    for path, lookup_contract in PUBLIC_LOOKUP_CONTRACTS.items():
+        operation = paths.get(path, {}).get("get", {})
+        parameters = {
+            (parameter.get("name"), parameter.get("in")): parameter
+            for parameter in operation.get("parameters", [])
+        }
+        id_parameter = parameters.get(("id", "path"), {})
+        if (
+            set(parameters) != {("id", "path")}
+            or id_parameter.get("required") is not True
+            or id_parameter.get("schema", {}).get("type") != "integer"
+            or id_parameter.get("schema", {}).get("format") != "int64"
+            or id_parameter.get("schema", {}).get("minimum") != 1
+        ):
+            raise PluginError(f"GET {path} id parameter contract changed")
+
+        responses = operation.get("responses", {})
+        success_media = responses.get("200", {}).get("content", {}).get("application/json", {})
+        if success_media.get("schema", {}).get("$ref") != (
+            f"#/components/schemas/{lookup_contract['response_schema']}"
+        ):
+            raise PluginError(f"GET {path} success response schema changed")
+        if success_media.get("examples", {}).get("found", {}).get("value") != (
+            lookup_contract["success_example"]
+        ):
+            raise PluginError(f"GET {path} safe found example changed")
+
+        _validate_lookup_problem_response(
+            responses,
+            "400",
+            "PublicValidationProblem",
+            {
+                "type": "urn:finbank:problem:validation-failed",
+                "title": "Request validation failed",
+                "status": 400,
+                "detail": "One or more request values are invalid.",
+                "instance": lookup_contract["validation_instance"],
+            },
+            "invalidId",
+            path,
+        )
+        _validate_lookup_problem_response(
+            responses,
+            "404",
+            "PublicNotFoundProblem",
+            {**PUBLIC_NOT_FOUND_PROBLEM, "instance": lookup_contract["not_found_instance"]},
+            "notFound",
+            path,
+        )
+
+
+def _validate_lookup_problem_response(
+        responses: dict[str, Any],
+        status: str,
+        schema_name: str,
+        expected_problem: dict[str, Any],
+        example_name: str,
+        path: str,
+) -> None:
+    media = (
+        responses.get(status, {})
+        .get("content", {})
+        .get("application/problem+json", {})
+    )
+    if media.get("schema", {}).get("$ref") != f"#/components/schemas/{schema_name}":
+        raise PluginError(f"GET {path} {status} Problem Details schema changed")
+    if media.get("examples", {}).get(example_name, {}).get("value") != expected_problem:
+        raise PluginError(f"GET {path} {status} safe Problem Details example changed")
 
 
 def _create_public_specification(specification: dict[str, Any]) -> dict[str, Any]:

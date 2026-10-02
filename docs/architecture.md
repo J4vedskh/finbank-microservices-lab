@@ -72,6 +72,11 @@ JPA relationships and future internal fields private by default while preserving
 the established public field names. Services and repositories remain entity-
 oriented; the mapping is deliberately confined to the HTTP adapter boundary.
 
+Account and payment lookup routes validate positive identifiers at the HTTP
+boundary. A missing resource returns a shared, fixed public `404` Problem Details
+shape with a route-family instance, so the supplied identifier and persistence
+details never become response data.
+
 Each committed terminal publication cycle also appends an immutable local
 dead-letter handoff in the same database transaction. It points to the retained
 outbox event and snapshots only the exhaustion sequence, time, attempt count,

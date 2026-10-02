@@ -51,7 +51,9 @@
 
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table thead {
@@ -60,13 +62,17 @@
 
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tbody,
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tr.response {
@@ -75,7 +81,9 @@
 
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tr.response td {
@@ -86,7 +94,9 @@
 
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table .response-col_status {
@@ -95,10 +105,12 @@
 
   #swagger-ui .swagger-ui :is(
     #operations-Accounts-listAccounts,
+    #operations-Accounts-getAccountById,
     #operations-Payments-listPayments,
+    #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table .response-col_links {
-    display: none;
+    display: none !important;
   }
 }

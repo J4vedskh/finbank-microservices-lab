@@ -2,6 +2,7 @@ package com.banking.account.controller;
 
 import com.banking.account.api.CreateAccountRequest;
 import com.banking.account.entity.Account;
+import com.banking.account.service.AccountNotFoundException;
 import com.banking.account.service.AccountService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -38,6 +39,70 @@ class AccountControllerTest {
 
     @MockBean
     private AccountService accountService;
+
+    @Test
+    void findAccountById_returnsExplicitPublicResponse() throws Exception {
+        when(accountService.findById(42L)).thenReturn(savedAccount());
+
+        mockMvc.perform(get("/accounts/42"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$.id").value(42))
+                .andExpect(jsonPath("$.customerName").value("Asha Mehta"))
+                .andExpect(jsonPath("$.balance").value(5000.00));
+
+        verify(accountService).findById(42L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "not-a-number"})
+    void findAccountById_invalidIdReturnsSafeProblemWithoutServiceCall(String id) throws Exception {
+        mockMvc.perform(get("/accounts/" + id))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:validation-failed"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Request validation failed"))
+                .andExpect(jsonPath("$.detail")
+                        .value("One or more request values are invalid."))
+                .andExpect(jsonPath("$.instance").value("/accounts"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void findAccountById_missingAccountReturnsSafeFixedNotFoundProblem() throws Exception {
+        when(accountService.findById(404L)).thenThrow(new AccountNotFoundException());
+
+        mockMvc.perform(get("/accounts/404"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:resource-not-found"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Resource not found"))
+                .andExpect(jsonPath("$.detail")
+                        .value("The requested resource was not found."))
+                .andExpect(jsonPath("$.instance").value("/accounts"))
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.customerName").doesNotExist())
+                .andExpect(jsonPath("$.balance").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+
+        verify(accountService).findById(404L);
+    }
 
     @Test
     void listAccounts_defaultsToFirstBoundedPageAndAdvertisesNextCursor() throws Exception {

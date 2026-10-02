@@ -167,6 +167,38 @@ class PaymentServiceTest {
         verifyNoInteractions(paymentCreationTransaction);
     }
 
+    @Test
+    void findById_returnsRepositoryPaymentWithoutCreationInteraction() {
+        Payment existing = payment(42L, 1L, 2L, "750.00");
+        when(paymentRepository.findById(42L)).thenReturn(Optional.of(existing));
+
+        Payment result = paymentService.findById(42L);
+
+        assertThat(result).isSameAs(existing);
+        verify(paymentRepository).findById(42L);
+        verifyNoInteractions(paymentCreationTransaction);
+    }
+
+    @Test
+    void findById_missingPaymentThrowsDataFreeNotFoundException() {
+        when(paymentRepository.findById(42L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentService.findById(42L))
+                .isInstanceOf(PaymentNotFoundException.class);
+
+        verify(paymentRepository).findById(42L);
+        verifyNoInteractions(paymentCreationTransaction);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidPaymentIds")
+    void findById_rejectsInvalidIdBeforeRepositoryOrCreationInteraction(Long id) {
+        assertThatThrownBy(() -> paymentService.findById(id))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(paymentRepository, paymentCreationTransaction);
+    }
+
     @ParameterizedTest
     @MethodSource("invalidPageRequests")
     void findAll_rejectsInvalidPageRequestBeforeRepositoryAccess(Long afterId, int limit) {
@@ -192,6 +224,10 @@ class PaymentServiceTest {
                 Arguments.of(null, -1),
                 Arguments.of(null, PaymentService.MAX_LIMIT + 1)
         );
+    }
+
+    private static Stream<Long> invalidPaymentIds() {
+        return Stream.of(null, 0L, -1L);
     }
 
     private static CreatePaymentRequest request(Long from, Long to, String amount) {

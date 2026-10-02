@@ -36,11 +36,14 @@ public specification with no authentication schemes, and loads its Swagger UI
 code and styles from checked-in assets rather than a CDN.
 
 Public account, payment, and transaction account-history validation responses,
-plus payment idempotency conflicts, use fixed Problem Details payloads. Treat
-their five fields as public contract data; do not add rejected values, request
-bodies, path IDs, idempotency keys, exception messages, or persistence details
-to these handlers. Account-history validation uses the stable
-`/transactions/account` instance rather than reflecting the supplied ID.
+account and payment lookup misses, plus payment idempotency conflicts, use fixed
+Problem Details payloads. Treat their five fields as public contract data; do
+not add rejected values, request bodies, path IDs, idempotency keys, exception
+messages, or persistence details to these handlers. Account-history validation
+uses the stable `/transactions/account` instance rather than reflecting the
+supplied ID. Account and payment lookup misses use the generic
+`urn:finbank:problem:resource-not-found` HTTP `404` payload and fixed route
+instances `/accounts` and `/payments`.
 
 Public account, payment, transaction, and transaction account-history reads use
 exclusive-ID keyset pagination: default limit 50, maximum 100, ascending `id`,

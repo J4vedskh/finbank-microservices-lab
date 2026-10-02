@@ -47,6 +47,11 @@ public class PaymentController {
         return response.body(payments.getContent());
     }
 
+    @GetMapping("/{id}")
+    public PaymentResponse byId(@PathVariable @Positive Long id) {
+        return PaymentResponse.from(paymentService.findById(id));
+    }
+
     @PostMapping
     public PaymentResponse create(
             @RequestHeader("Idempotency-Key")

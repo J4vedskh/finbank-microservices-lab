@@ -20,6 +20,13 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
+    public Account findById(Long id) {
+        validateAccountId(id);
+        return accountRepository.findById(id)
+                .orElseThrow(AccountNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
     public Slice<Account> findAll(Long afterId, int limit) {
         validatePageRequest(afterId, limit);
         PageRequest pageRequest = PageRequest.of(0, limit);
@@ -42,6 +49,12 @@ public class AccountService {
             throw new IllegalArgumentException(
                     "account list limit must be between 1 and " + MAX_LIMIT
             );
+        }
+    }
+
+    private void validateAccountId(Long id) {
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("account id must be positive");
         }
     }
 }

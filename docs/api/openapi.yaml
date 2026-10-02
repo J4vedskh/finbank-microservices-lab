@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.12.0
+  version: 0.13.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -122,6 +122,68 @@ paths:
                     title: Request validation failed
                     status: 400
                     detail: One or more request values are invalid.
+                    instance: /accounts
+  /accounts/{id}:
+    servers:
+      - url: http://localhost:8081
+        description: Account Service
+    get:
+      operationId: getAccountById
+      tags: [Accounts]
+      summary: Get an account
+      description: Returns one account identified by a positive generated id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Positive account identifier.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Account found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              examples:
+                found:
+                  summary: Synthetic account lookup result
+                  value:
+                    id: 101
+                    customerName: Demo Customer
+                    balance: 5000.00
+        "400":
+          description: Account id failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidId:
+                  summary: Safe path validation failure without the rejected value
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /accounts
+        "404":
+          description: Account was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicNotFoundProblem"
+              examples:
+                notFound:
+                  summary: Safe account lookup miss without the requested identifier
+                  value:
+                    type: urn:finbank:problem:resource-not-found
+                    title: Resource not found
+                    status: 404
+                    detail: The requested resource was not found.
                     instance: /accounts
   /payments:
     servers:
@@ -262,6 +324,70 @@ paths:
                     title: Idempotency key conflict
                     status: 409
                     detail: The Idempotency-Key is already associated with a different payment request.
+                    instance: /payments
+  /payments/{id}:
+    servers:
+      - url: http://localhost:8082
+        description: Payment Service
+    get:
+      operationId: getPaymentById
+      tags: [Payments]
+      summary: Get a payment
+      description: Returns one payment identified by a positive generated id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Positive payment identifier.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+              examples:
+                found:
+                  summary: Synthetic payment lookup result
+                  value:
+                    id: 201
+                    fromAccount: 101
+                    toAccount: 202
+                    amount: 750.00
+                    status: PUBLISHED
+        "400":
+          description: Payment id failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidId:
+                  summary: Safe path validation failure without the rejected value
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /payments
+        "404":
+          description: Payment was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicNotFoundProblem"
+              examples:
+                notFound:
+                  summary: Safe payment lookup miss without the requested identifier
+                  value:
+                    type: urn:finbank:problem:resource-not-found
+                    title: Resource not found
+                    status: 404
+                    detail: The requested resource was not found.
                     instance: /payments
   /internal/payment-outbox/{eventId}/recovery:
     post:
@@ -809,6 +935,30 @@ components:
         instance:
           type: string
           enum: [/payments]
+    PublicNotFoundProblem:
+      type: object
+      description: >-
+        Stable public lookup miss. Requested identifiers, persistence details,
+        framework messages, and exception details are intentionally omitted.
+      additionalProperties: false
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          enum: [urn:finbank:problem:resource-not-found]
+        title:
+          type: string
+          enum: [Resource not found]
+        status:
+          type: integer
+          format: int32
+          enum: [404]
+        detail:
+          type: string
+          enum: [The requested resource was not found.]
+        instance:
+          type: string
+          enum: [/accounts, /payments]
     Transaction:
       type: object
       description: >-
