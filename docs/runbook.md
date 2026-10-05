@@ -35,15 +35,15 @@ API Explorer files. The explorer is deliberately read-only, uses a generated
 public specification with no authentication schemes, and loads its Swagger UI
 code and styles from checked-in assets rather than a CDN.
 
-Public account, payment, and transaction account-history validation responses,
-account and payment lookup misses, plus payment idempotency conflicts, use fixed
-Problem Details payloads. Treat their five fields as public contract data; do
-not add rejected values, request bodies, path IDs, idempotency keys, exception
-messages, or persistence details to these handlers. Account-history validation
-uses the stable `/transactions/account` instance rather than reflecting the
-supplied ID. Account and payment lookup misses use the generic
-`urn:finbank:problem:resource-not-found` HTTP `404` payload and fixed route
-instances `/accounts` and `/payments`.
+Public account, payment, transaction, and transaction account-history validation
+responses, account/payment/transaction lookup misses, plus payment idempotency
+conflicts, use fixed Problem Details payloads. Treat their five fields as public
+contract data; do not add rejected values, request bodies, path IDs, idempotency
+keys, exception messages, or persistence details to these handlers.
+Account-history validation uses the stable `/transactions/account` instance
+rather than reflecting the supplied ID. Account, payment, and transaction lookup
+misses use the generic `urn:finbank:problem:resource-not-found` HTTP `404`
+payload and fixed route instances `/accounts`, `/payments`, and `/transactions`.
 
 Public account, payment, transaction, and transaction account-history reads use
 exclusive-ID keyset pagination: default limit 50, maximum 100, ascending `id`,

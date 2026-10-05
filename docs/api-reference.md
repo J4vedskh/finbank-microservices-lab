@@ -25,21 +25,22 @@ payloads, or recovery details.
 
 ### Public Problem Details
 
-Account, payment, and transaction account-history validation failures share one
-stable five-field `application/problem+json` contract: `type`, `title`, `status`,
-generic `detail`, and the public route `instance`. Malformed JSON, missing or
-invalid request fields, missing or invalid payment idempotency headers, and
-nonnumeric or nonpositive transaction account IDs all use
+Account, payment, transaction, and transaction account-history validation
+failures share one stable five-field `application/problem+json` contract:
+`type`, `title`, `status`, generic `detail`, and the public route `instance`.
+Malformed JSON, missing or invalid request fields, missing or invalid payment
+idempotency headers, and nonnumeric or nonpositive transaction account IDs all use
 `urn:finbank:problem:validation-failed` with HTTP `400`.
 
 The account-history response uses the fixed route-family instance
 `/transactions/account`; it never echoes the supplied path segment.
 
-Account and payment lookups reject nonnumeric or nonpositive IDs with the same
-fixed HTTP `400` validation payload, using `/accounts` or `/payments` as the
-instance. A missing account or payment returns HTTP `404` with the fixed
-five-field `urn:finbank:problem:resource-not-found` payload. It uses the generic
-detail `The requested resource was not found.` and never reflects the requested
+Account, payment, and transaction lookups reject nonnumeric or nonpositive IDs
+with the same fixed HTTP `400` validation payload, using `/accounts`,
+`/payments`, or `/transactions` as the instance. A missing account, payment, or
+transaction returns HTTP `404` with the fixed five-field
+`urn:finbank:problem:resource-not-found` payload. It uses the generic detail
+`The requested resource was not found.` and never reflects the requested
 identifier or reveals persistence details.
 
 ### Public Collection Pagination
@@ -69,7 +70,7 @@ exception names, persistence details, or stack traces.
 
 ### Public Response DTO Boundary
 
-All eight public operations return explicit immutable response records rather
+All nine public operations return explicit immutable response records rather
 than serializing JPA entities. Controllers map service results field by field
 while services and repositories keep their existing persistence models:
 
@@ -276,6 +277,7 @@ Base URL: `http://localhost:8083`
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/transactions` | List transactions |
+| `GET` | `/transactions/{id}` | Get one transaction by a positive ID |
 | `GET` | `/transactions/account/{id}` | List transactions involving an account |
 
 ## Contract Delivery

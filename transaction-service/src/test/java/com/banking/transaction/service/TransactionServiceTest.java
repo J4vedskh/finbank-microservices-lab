@@ -162,6 +162,44 @@ class TransactionServiceTest {
     }
 
     @Test
+    void findById_returnsPersistedTransactionWithoutEnteringPaymentWritePath() {
+        Transaction expected = completedTransaction(42L, 1L, 2L, "750.00");
+        when(transactionRepository.findById(99L)).thenReturn(Optional.of(expected));
+
+        Transaction result = transactionService.findById(99L);
+
+        assertThat(result).isSameAs(expected);
+        verify(transactionRepository).findById(99L);
+        verify(transactionRepository, never()).findByPaymentId(any());
+        verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
+    }
+
+    @Test
+    void findById_missingTransactionThrowsDataFreeTypedNotFoundException() {
+        when(transactionRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transactionService.findById(404L))
+                .isInstanceOf(TransactionNotFoundException.class)
+                .hasNoCause();
+
+        verify(transactionRepository).findById(404L);
+        verify(transactionRepository, never()).findByPaymentId(any());
+        verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
+    }
+
+    @Test
+    void findById_rejectsInvalidIdBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> transactionService.findById(null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findById(0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> transactionService.findById(-1L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
     void findAll_withoutCursor_returnsAscendingBoundedRepositorySlice() {
         Transaction transaction = new Transaction();
         PageRequest pageRequest = PageRequest.of(0, TransactionService.DEFAULT_LIMIT);

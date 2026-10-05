@@ -55,6 +55,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table thead {
     display: none;
@@ -66,6 +67,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tbody,
   #swagger-ui .swagger-ui :is(
@@ -74,6 +76,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tr.response {
     display: block;
@@ -85,6 +88,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table tr.response td {
     display: block;
@@ -98,6 +102,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table .response-col_status {
     padding-bottom: 0;
@@ -109,6 +114,7 @@
     #operations-Payments-listPayments,
     #operations-Payments-getPaymentById,
     #operations-Transactions-listTransactions,
+    #operations-Transactions-getTransactionById,
     #operations-Transactions-listTransactionsByAccount
   ) .responses-table .response-col_links {
     display: none !important;

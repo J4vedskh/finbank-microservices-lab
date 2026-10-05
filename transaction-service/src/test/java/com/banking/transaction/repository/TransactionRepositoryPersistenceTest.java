@@ -60,6 +60,17 @@ class TransactionRepositoryPersistenceTest {
     }
 
     @Test
+    void findById_readsPersistedTransactionAfterEntityManagerClear() {
+        Transaction saved = transactionRepository.saveAndFlush(transaction(42L, 1L, 2L));
+        entityManager.clear();
+
+        Transaction found = transactionService.findById(saved.getId());
+
+        assertThat(found.getId()).isEqualTo(saved.getId());
+        assertPersistedTransaction(found);
+    }
+
+    @Test
     void recordPaymentEvent_identicalReplayKeepsOneLedgerEntry() {
         Transaction first = transactionService.recordPaymentEvent("42|1|2|750.000");
         entityManager.flush();

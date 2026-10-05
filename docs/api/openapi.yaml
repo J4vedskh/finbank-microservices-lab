@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: FinBank Microservices API
-  version: 0.13.0
+  version: 0.14.0
   description: Curated aggregate contract for the account, payment, and transaction services.
 tags:
   - name: Accounts
@@ -595,6 +595,72 @@ paths:
                     status: 400
                     detail: One or more request values are invalid.
                     instance: /transactions
+  /transactions/{id}:
+    servers:
+      - url: http://localhost:8083
+        description: Transaction Service
+    get:
+      operationId: getTransactionById
+      tags: [Transactions]
+      summary: Get a transaction
+      description: Returns one transaction identified by a positive generated id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Positive transaction identifier.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Transaction found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+              examples:
+                found:
+                  summary: Synthetic transaction lookup result
+                  value:
+                    id: 301
+                    paymentId: 201
+                    fromAccount: 101
+                    toAccount: 202
+                    amount: 750.00
+                    createdAt: "2026-01-15T10:30:00Z"
+                    status: COMPLETED
+        "400":
+          description: Transaction id failed validation
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicValidationProblem"
+              examples:
+                invalidId:
+                  summary: Safe path validation failure without the rejected value
+                  value:
+                    type: urn:finbank:problem:validation-failed
+                    title: Request validation failed
+                    status: 400
+                    detail: One or more request values are invalid.
+                    instance: /transactions
+        "404":
+          description: Transaction was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PublicNotFoundProblem"
+              examples:
+                notFound:
+                  summary: Safe transaction lookup miss without the requested identifier
+                  value:
+                    type: urn:finbank:problem:resource-not-found
+                    title: Resource not found
+                    status: 404
+                    detail: The requested resource was not found.
+                    instance: /transactions
   /transactions/account/{id}:
     servers:
       - url: http://localhost:8083
@@ -958,7 +1024,7 @@ components:
           enum: [The requested resource was not found.]
         instance:
           type: string
-          enum: [/accounts, /payments]
+          enum: [/accounts, /payments, /transactions]
     Transaction:
       type: object
       description: >-

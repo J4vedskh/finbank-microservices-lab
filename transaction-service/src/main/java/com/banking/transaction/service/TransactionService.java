@@ -27,6 +27,15 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
+    public Transaction findById(Long id) {
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("transaction id must be positive");
+        }
+        return transactionRepository.findById(id)
+                .orElseThrow(TransactionNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
     public Slice<Transaction> findAll(Long afterId, int limit) {
         validateListRequest(afterId, limit);
 

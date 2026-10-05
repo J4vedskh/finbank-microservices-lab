@@ -41,6 +41,9 @@ EXPECTED_OPERATIONS = {
     "/transactions": {
         "get": "listTransactions",
     },
+    "/transactions/{id}": {
+        "get": "getTransactionById",
+    },
     "/transactions/account/{id}": {
         "get": "listTransactionsByAccount",
     },
@@ -53,6 +56,7 @@ EXPECTED_SERVERS = {
     "/internal/payment-outbox/{eventId}/recovery": "https://localhost:8082",
     "/internal/payment-outbox/dead-letter-handoffs": "https://localhost:8082",
     "/transactions": "http://localhost:8083",
+    "/transactions/{id}": "http://localhost:8083",
     "/transactions/account/{id}": "http://localhost:8083",
 }
 EXPECTED_OPERATOR_SECURITY = {
@@ -76,6 +80,7 @@ PUBLIC_PATHS = {
     "/payments",
     "/payments/{id}",
     "/transactions",
+    "/transactions/{id}",
     "/transactions/account/{id}",
 }
 PUBLIC_SCHEMAS = {
@@ -152,8 +157,22 @@ PUBLIC_LOOKUP_CONTRACTS = {
         "validation_instance": "/payments",
         "not_found_instance": "/payments",
     },
+    "/transactions/{id}": {
+        "response_schema": "Transaction",
+        "success_example": {
+            "id": 301,
+            "paymentId": 201,
+            "fromAccount": 101,
+            "toAccount": 202,
+            "amount": 750.00,
+            "createdAt": "2026-01-15T10:30:00Z",
+            "status": "COMPLETED",
+        },
+        "validation_instance": "/transactions",
+        "not_found_instance": "/transactions",
+    },
 }
-PUBLIC_NOT_FOUND_INSTANCES = {"/accounts", "/payments"}
+PUBLIC_NOT_FOUND_INSTANCES = {"/accounts", "/payments", "/transactions"}
 PUBLIC_NOT_FOUND_PROBLEM = {
     "type": "urn:finbank:problem:resource-not-found",
     "title": "Resource not found",
@@ -297,7 +316,7 @@ def _validate_contract_invariants(specification: dict[str, Any]) -> None:
     if specification.get("openapi") != "3.0.3":
         raise PluginError("The canonical contract must remain OpenAPI 3.0.3")
     info = specification.get("info", {})
-    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.13.0":
+    if info.get("title") != "FinBank Microservices API" or info.get("version") != "0.14.0":
         raise PluginError("The canonical API title or version changed unexpectedly")
 
     paths = specification.get("paths", {})

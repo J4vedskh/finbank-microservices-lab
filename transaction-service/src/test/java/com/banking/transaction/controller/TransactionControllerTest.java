@@ -1,6 +1,7 @@
 package com.banking.transaction.controller;
 
 import com.banking.transaction.entity.Transaction;
+import com.banking.transaction.service.TransactionNotFoundException;
 import com.banking.transaction.service.TransactionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,6 +40,75 @@ class TransactionControllerTest {
 
     @MockBean
     private TransactionService transactionService;
+
+    @Test
+    void findTransactionById_returnsExplicitPublicResponse() throws Exception {
+        when(transactionService.findById(99L)).thenReturn(savedTransaction());
+
+        mockMvc.perform(get("/transactions/99"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(7))
+                .andExpect(jsonPath("$.id").value(99))
+                .andExpect(jsonPath("$.paymentId").value(42))
+                .andExpect(jsonPath("$.fromAccount").value(1))
+                .andExpect(jsonPath("$.toAccount").value(2))
+                .andExpect(jsonPath("$.amount").value(750.00))
+                .andExpect(jsonPath("$.createdAt").value("2026-09-27T09:30:00Z"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(transactionService).findById(99L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void findTransactionById_nonPositiveIdReturnsSafeProblemWithoutSideEffects(
+            String transactionId
+    ) throws Exception {
+        assertInvalidTransactionLookupProblem(transactionId)
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(HandlerMethodValidationException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @Test
+    void findTransactionById_nonNumericIdReturnsSafeProblemWithoutSideEffects() throws Exception {
+        assertInvalidTransactionLookupProblem("not-a-number")
+                .andExpect(result -> assertThat(result.getResolvedException())
+                        .isInstanceOf(MethodArgumentTypeMismatchException.class));
+
+        verifyNoInteractions(transactionService);
+    }
+
+    @Test
+    void findTransactionById_missingTransactionReturnsSafeFixedNotFoundProblem() throws Exception {
+        when(transactionService.findById(404L)).thenThrow(new TransactionNotFoundException());
+
+        mockMvc.perform(get("/transactions/404"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:resource-not-found"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Resource not found"))
+                .andExpect(jsonPath("$.detail")
+                        .value("The requested resource was not found."))
+                .andExpect(jsonPath("$.instance").value("/transactions"))
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.paymentId").doesNotExist())
+                .andExpect(jsonPath("$.accountId").doesNotExist())
+                .andExpect(jsonPath("$.fromAccount").doesNotExist())
+                .andExpect(jsonPath("$.toAccount").doesNotExist())
+                .andExpect(jsonPath("$.amount").doesNotExist())
+                .andExpect(jsonPath("$.timestamp").doesNotExist())
+                .andExpect(jsonPath("$.createdAt").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+
+        verify(transactionService).findById(404L);
+    }
 
     @Test
     void listTransactions_usesDefaultBoundedSliceWithoutNextLink() throws Exception {
@@ -308,6 +378,27 @@ class TransactionControllerTest {
                 .andExpect(jsonPath("$.rejectedValue").doesNotExist())
                 .andExpect(jsonPath("$.afterId").doesNotExist())
                 .andExpect(jsonPath("$.limit").doesNotExist())
+                .andExpect(jsonPath("$.exception").doesNotExist());
+    }
+
+    private ResultActions assertInvalidTransactionLookupProblem(String transactionId) throws Exception {
+        return mockMvc.perform(get("/transactions/{id}", transactionId))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:finbank:problem:validation-failed"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Request validation failed"))
+                .andExpect(jsonPath("$.detail")
+                        .value("One or more request values are invalid."))
+                .andExpect(jsonPath("$.instance").value("/transactions"))
+                .andExpect(jsonPath("$.errors").doesNotExist())
+                .andExpect(jsonPath("$.field").doesNotExist())
+                .andExpect(jsonPath("$.rejectedValue").doesNotExist())
+                .andExpect(jsonPath("$.id").doesNotExist())
                 .andExpect(jsonPath("$.exception").doesNotExist());
     }
 
