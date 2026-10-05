@@ -51,7 +51,7 @@ gantt
 | 24 | Completed: add bounded keyset pagination to public collection endpoints |
 | 25 | Completed: add bounded keyset pagination to transaction account-history reads |
 | 26 | Completed: add single-resource account and payment lookups with safe public `404` Problem Details |
-| 27 | Add single-resource transaction lookup with safe public `404` Problem Details |
+| 27 | Completed: add single-resource transaction lookup with safe public `404` Problem Details |
 
 ## Commit Standard
 

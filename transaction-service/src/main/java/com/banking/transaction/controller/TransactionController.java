@@ -25,6 +25,11 @@ public class TransactionController {
         this.transactionService = transactionService;
     }
 
+    @GetMapping("/{id}")
+    public TransactionResponse byId(@PathVariable @Positive Long id) {
+        return TransactionResponse.from(transactionService.findById(id));
+    }
+
     @GetMapping
     public ResponseEntity<List<TransactionResponse>> all(
             @RequestParam(required = false) @Positive Long afterId,
