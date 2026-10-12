@@ -54,6 +54,7 @@ flowchart TD
 | 2026-10-01 | Account-history keyset pagination | Bounded transaction account-history reads with the same exclusive positive cursor and limits, deterministic id ordering, array-compatible bodies, and a same-account rel-next Link contract. | `mvn -T 1C clean test` |
 | 2026-10-02 | Single-resource account and payment lookups | Added positive-ID account and payment lookups with explicit response DTOs and fixed safe public `404` Problem Details that never reflect the requested identifier. | `mvn -T 1C clean test` |
 | 2026-10-05 | Single-resource transaction lookup | Added the positive-ID transaction lookup with its existing explicit response DTO and fixed safe public `404` Problem Details that never reflect the requested identifier. | `mvn -T 1C clean test` |
+| 2026-10-12 | Prometheus runtime export | Exposed framework Actuator Prometheus metrics locally for account, payment, and transaction services; the held Kubernetes scrape path remains pending alignment. | `mvn -T 1C clean test` and `mkdocs build --strict` |
 
 ## Upcoming Focus
 

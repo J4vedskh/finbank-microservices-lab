@@ -233,6 +233,31 @@ and indexes against the target MySQL version. Use a reviewed schema migration
 and explicitly backfill any already-exhausted production rows before treating
 the handoff or retention jobs as production-ready.
 
+## Local Metrics Verification
+
+With the three services running locally, verify the Prometheus-format Actuator
+export directly before configuring a scraper:
+
+```bash
+curl --fail http://localhost:8081/actuator/prometheus
+curl --fail http://localhost:8082/actuator/prometheus
+curl --fail http://localhost:8083/actuator/prometheus
+```
+
+Each endpoint returns framework/runtime metrics. The payment service
+allowlists exactly `/actuator/prometheus`, so this local verification does not
+need operator credentials. Do not use the legacy `/metrics` route: it returns
+`404`.
+
+Keep these operational endpoints on a trusted network. The account and
+transaction services do not add application authentication, and the payment
+endpoint is deliberately anonymous.
+
+The Kubernetes Prometheus manifest is intentionally unchanged and still
+scrapes `/metrics`. Align it to `/actuator/prometheus` only when the held
+platform work is released; until then, use the local curl checks above to
+verify the export.
+
 ## Local Infrastructure
 
 ```bash

@@ -42,6 +42,38 @@ flowchart LR
 | Ledger Flow | Kafka lag, transaction insert rate, ledger write failures, duplicate event count |
 | Platform | MySQL availability, connection pool usage, container restarts, CPU and memory |
 
+## Current Runtime Export
+
+All three Spring Boot services now publish the framework's Prometheus-format
+Actuator metrics at the following local endpoints:
+
+| Service | Endpoint |
+| --- | --- |
+| Account Service | `http://localhost:8081/actuator/prometheus` |
+| Payment Service | `http://localhost:8082/actuator/prometheus` |
+| Transaction Service | `http://localhost:8083/actuator/prometheus` |
+
+These endpoints expose framework and runtime signals, such as HTTP, JVM, and
+process metrics. They do not yet include custom business metrics, dashboards,
+or screenshots. The payment service allowlists this exact Prometheus endpoint,
+so the local request does not require operator credentials.
+
+Treat all three endpoints as operational surfaces and keep them behind trusted
+network access. The account and transaction services do not add application
+authentication, and the payment endpoint is deliberately anonymous.
+
+Verify a running local service with:
+
+```bash
+curl --fail http://localhost:8081/actuator/prometheus
+curl --fail http://localhost:8082/actuator/prometheus
+curl --fail http://localhost:8083/actuator/prometheus
+```
+
+The legacy `/metrics` route remains unavailable (`404`). The held Kubernetes
+Prometheus manifest still targets `/metrics`; its scrape path must be aligned
+to `/actuator/prometheus` when platform work is released.
+
 ## Alert Candidates
 
 | Alert | Trigger | Severity |
@@ -70,6 +102,6 @@ sequenceDiagram
     Ledger-->>Payments: Future status callback or query path
 ```
 
-The next implementation step is to expose consistent actuator metrics in each
-service and document the Prometheus scrape configuration alongside sample
-Grafana panels.
+The runtime export is now available locally. The next observability work is to
+align the held Kubernetes scrape configuration, then add dashboard examples
+and tracing.
