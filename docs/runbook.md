@@ -258,6 +258,25 @@ scrapes `/metrics`. Align it to `/actuator/prometheus` only when the held
 platform work is released; until then, use the local curl checks above to
 verify the export.
 
+## Grafana Runtime Dashboard
+
+After a Prometheus data source can scrape the Actuator endpoints, import
+`ops/grafana/finbank-service-overview.json` from Grafana's **Dashboards** page
+with **New** then **Import**. Choose that Prometheus data source when Grafana
+prompts for it, then use the `$job` and `$instance` filters to select targets.
+The `$service_group` filter defaults to the repository's `microservices` scrape
+label; select the matching FinBank group first if your Prometheus labels differ.
+If the target label key itself is not `group`, adapt the dashboard JSON selectors
+before import; choosing another value cannot repair a missing or renamed key.
+The [Grafana dashboard guide](grafana-dashboard.md) lists all nine panels and
+explains its direct **UP**, **DOWN**, and **No data** states.
+
+Until the held Kubernetes scrape path changes from `/metrics` to
+`/actuator/prometheus`, imported Kubernetes-backed panels are expected to show
+**DOWN** or **No data**. Do not interpret that as zero traffic or create a live
+screenshot from it. The overview displays a mean HTTP duration, not p95, and
+contains neither alerts nor custom business metrics.
+
 ## Local Infrastructure
 
 ```bash

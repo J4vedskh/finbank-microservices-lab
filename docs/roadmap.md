@@ -43,7 +43,7 @@ gantt
 | 16 | Add independently available dead-letter delivery and MySQL qualification |
 | 17 | Completed: add a read-only Swagger UI and offline OpenAPI validation |
 | 18 | Add health probes and resource limits to Kubernetes manifests |
-| 19 | Add Prometheus dashboard documentation and screenshots |
+| 19 | Add a verified Prometheus dashboard screenshot after live scrape-path alignment (dashboard documentation is complete; screenshots remain pending) |
 | 20 | Completed: add validated synthetic response examples for every public API operation |
 | 21 | Completed: standardize public validation and idempotency-conflict Problem Details |
 | 22 | Completed: replace public JPA entity serialization with explicit response DTOs |
@@ -53,6 +53,7 @@ gantt
 | 26 | Completed: add single-resource account and payment lookups with safe public `404` Problem Details |
 | 27 | Completed: add single-resource transaction lookup with safe public `404` Problem Details |
 | 28 | Completed: expose framework Prometheus metrics through the local Actuator endpoint in all three services |
+| 29 | Completed: add a deployment-independent, importable Grafana runtime-dashboard starter using verified framework metrics |
 
 ## Commit Standard
 

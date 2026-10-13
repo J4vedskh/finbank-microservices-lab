@@ -74,6 +74,22 @@ The legacy `/metrics` route remains unavailable (`404`). The held Kubernetes
 Prometheus manifest still targets `/metrics`; its scrape path must be aligned
 to `/actuator/prometheus` when platform work is released.
 
+## Grafana Runtime Dashboard
+
+The repository includes an importable, deployment-independent runtime overview
+starter with nine panels, `$service_group`, `$job`, and `$instance` filters, and only verified
+framework metrics. Its `$service_group` filter defaults to the existing
+`microservices` scrape label so a shared datasource does not mix unrelated
+targets into FinBank results. The `group` label key is a portability prerequisite;
+a deployment with another key must adapt the JSON selectors. See the [Grafana dashboard guide](grafana-dashboard.md) for
+the import steps, panel meanings, accessibility cues, and the difference
+between zero and **No data**. Its HTTP duration panel shows a mean, not p95,
+and it creates no alerts or custom business metrics.
+
+Because the held Kubernetes Prometheus manifest still scrapes `/metrics`, a
+Kubernetes-backed import will show **DOWN** or **No data** until that scrape
+path is released and aligned. No live dashboard screenshot is claimed.
+
 ## Alert Candidates
 
 | Alert | Trigger | Severity |
@@ -102,6 +118,6 @@ sequenceDiagram
     Ledger-->>Payments: Future status callback or query path
 ```
 
-The runtime export is now available locally. The next observability work is to
-align the held Kubernetes scrape configuration, then add dashboard examples
-and tracing.
+The runtime export and a deployment-independent dashboard starter are available
+locally. The next observability work is to align the held Kubernetes scrape
+configuration, verify it with a live dashboard screenshot, then add tracing.
