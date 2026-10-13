@@ -55,6 +55,7 @@ flowchart TD
 | 2026-10-02 | Single-resource account and payment lookups | Added positive-ID account and payment lookups with explicit response DTOs and fixed safe public `404` Problem Details that never reflect the requested identifier. | `mvn -T 1C clean test` |
 | 2026-10-05 | Single-resource transaction lookup | Added the positive-ID transaction lookup with its existing explicit response DTO and fixed safe public `404` Problem Details that never reflect the requested identifier. | `mvn -T 1C clean test` |
 | 2026-10-12 | Prometheus runtime export | Exposed framework Actuator Prometheus metrics locally for account, payment, and transaction services; the held Kubernetes scrape path remains pending alignment. | `mvn -T 1C clean test` and `mkdocs build --strict` |
+| 2026-10-13 | Grafana dashboard starter | Added an importable, deployment-independent nine-panel runtime overview with service-group, job, and instance filters, explicit UP/DOWN/No data states, and only verified framework metrics. A live screenshot remains pending until the held Kubernetes scrape path is aligned. | `mvn -T 1C clean test` and `mkdocs build --strict` |
 
 ## Upcoming Focus
 
@@ -63,7 +64,7 @@ flowchart TD
 | Backend | Application API roadmap complete; next active project is PayloadProbe validation and error responses. |
 | Quality | Qualify recovery persistence and lock contention against MySQL. |
 | Platform | Tighten Docker Compose health checks and environment defaults. |
-| Observability | Add a metrics and tracing overview with dashboard examples. |
+| Observability | Release and verify the held Kubernetes scrape-path alignment, then capture a live dashboard screenshot and add tracing. |
 | Resilience | Add independently available dead-letter delivery after the held platform work is released. |
 
 ## Review Standard

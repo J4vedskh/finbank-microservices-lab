@@ -33,6 +33,7 @@ nav:
   - Overview: index.md
   - Architecture: architecture.md
   - Observability: observability.md
+  - Grafana Dashboard: grafana-dashboard.md
   - Resilience: resilience.md
   - API Reference: api-reference.md
   - API Explorer: api-explorer.md
