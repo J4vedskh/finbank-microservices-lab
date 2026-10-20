@@ -1,6 +1,7 @@
 package com.banking.transaction.service;
 
 import com.banking.transaction.entity.Transaction;
+import com.banking.transaction.observability.TransactionBusinessMetrics;
 import com.banking.transaction.repository.TransactionRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
@@ -21,9 +22,14 @@ public class TransactionService {
             "expected paymentId|fromAccount|toAccount|amount";
 
     private final TransactionRepository transactionRepository;
+    private final TransactionBusinessMetrics businessMetrics;
 
-    public TransactionService(TransactionRepository transactionRepository) {
+    public TransactionService(
+            TransactionRepository transactionRepository,
+            TransactionBusinessMetrics businessMetrics
+    ) {
         this.transactionRepository = transactionRepository;
+        this.businessMetrics = businessMetrics;
     }
 
     @Transactional(readOnly = true)
@@ -102,6 +108,7 @@ public class TransactionService {
 
     private Transaction acceptReplay(Transaction existing, PaymentEvent paymentEvent) {
         if (sameBusinessEvent(existing, paymentEvent)) {
+            businessMetrics.recordDuplicateEvent();
             return existing;
         }
         throw new PaymentEventConflictException(paymentEvent.paymentId());

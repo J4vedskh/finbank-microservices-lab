@@ -48,6 +48,10 @@ class PrometheusEndpointIntegrationTest {
                 .andExpect(content().string(containsString("jvm_memory_used_bytes")))
                 .andExpect(content().string(containsString("jvm_threads_live_threads")))
                 .andExpect(content().string(containsString("process_uptime_seconds")))
+                .andExpect(content().string(containsString(
+                        "finbank_payment_outbox_retries_total")))
+                .andExpect(content().string(containsString(
+                        "finbank_payment_outbox_stuck")))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -55,6 +59,8 @@ class PrometheusEndpointIntegrationTest {
         assertMetricSample(prometheus, "http_server_requests_seconds_count",
                 "method=\"GET\"", "outcome=\"SUCCESS\"", "status=\"200\"", "uri=\"/payments\"");
         assertMetricSample(prometheus, "jvm_memory_used_bytes", "area=\"heap\"");
+        assertUntaggedMetricSample(prometheus, "finbank_payment_outbox_retries_total");
+        assertUntaggedMetricSample(prometheus, "finbank_payment_outbox_stuck");
     }
 
     @Test
@@ -68,5 +74,13 @@ class PrometheusEndpointIntegrationTest {
                         .filter(line -> line.startsWith(metric + "{"))
                         .toList())
                 .anyMatch(line -> Arrays.stream(requiredLabels).allMatch(line::contains));
+    }
+
+    private void assertUntaggedMetricSample(String exposition, String metric) {
+        assertThat(exposition.lines()
+                        .filter(line -> line.startsWith(metric + " "))
+                        .toList())
+                .singleElement()
+                .satisfies(line -> assertThat(line).doesNotContain("{"));
     }
 }

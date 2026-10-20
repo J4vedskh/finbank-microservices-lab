@@ -30,7 +30,10 @@ class GrafanaDashboardContractTest {
             "http_server_requests_seconds_sum",
             "jvm_memory_used_bytes",
             "jvm_threads_live_threads",
-            "process_uptime_seconds");
+            "process_uptime_seconds",
+            "finbank_payment_outbox_retries_total",
+            "finbank_transaction_duplicate_events_total",
+            "finbank_payment_outbox_stuck");
     private static final List<String> EXPECTED_EXPRESSIONS = List.of(
             "min(up{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"})",
             "count(up{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"})",
@@ -40,7 +43,10 @@ class GrafanaDashboardContractTest {
             "sum by (job, instance, outcome) (rate(http_server_requests_seconds_count{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\", uri!~\"/actuator.*\"}[$__rate_interval]))",
             "sum by (job, instance) (rate(http_server_requests_seconds_sum{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\", uri!~\"/actuator.*\"}[$__rate_interval])) / sum by (job, instance) (rate(http_server_requests_seconds_count{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\", uri!~\"/actuator.*\"}[$__rate_interval]))",
             "sum by (job, instance) (jvm_memory_used_bytes{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\", area=\"heap\"})",
-            "jvm_threads_live_threads{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"}");
+            "jvm_threads_live_threads{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"}",
+            "sum(increase(finbank_payment_outbox_retries_total{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"}[$__range]))",
+            "sum(increase(finbank_transaction_duplicate_events_total{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"}[$__range]))",
+            "sum(finbank_payment_outbox_stuck{group=~\"$service_group\", job=~\"$job\", instance=~\"$instance\"})");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -61,7 +67,7 @@ class GrafanaDashboardContractTest {
         assertThat(inputs.get(0).path("pluginId").asText()).isEqualTo("prometheus");
 
         JsonNode panels = dashboard.path("panels");
-        assertThat(panels).hasSize(9);
+        assertThat(panels).hasSize(12);
         Set<Integer> panelIds = new HashSet<>();
         List<PanelRectangle> rectangles = new ArrayList<>();
         for (JsonNode panel : panels) {
@@ -147,15 +153,18 @@ class GrafanaDashboardContractTest {
     @Test
     void dashboardHasExpectedScanOrderUnitsAndTargetFilters() throws IOException {
         JsonNode dashboard = readDashboard();
-        Map<String, String> expectedUnits = Map.of(
-                "Selected targets", "short",
-                "5xx responses in range", "short",
-                "Longest process uptime", "s",
-                "Target availability", "short",
-                "HTTP request outcomes", "reqps",
-                "Average HTTP duration", "s",
-                "JVM heap used", "bytes",
-                "Live JVM threads", "short");
+        Map<String, String> expectedUnits = Map.ofEntries(
+                Map.entry("Selected targets", "short"),
+                Map.entry("5xx responses in range", "short"),
+                Map.entry("Longest process uptime", "s"),
+                Map.entry("Target availability", "short"),
+                Map.entry("HTTP request outcomes", "reqps"),
+                Map.entry("Average HTTP duration", "s"),
+                Map.entry("JVM heap used", "bytes"),
+                Map.entry("Live JVM threads", "short"),
+                Map.entry("Outbox retries in range", "short"),
+                Map.entry("Duplicate payment events in range", "short"),
+                Map.entry("Stuck payment outbox events", "short"));
 
         List<String> titles = new ArrayList<>();
         for (JsonNode panel : dashboard.path("panels")) {
@@ -164,6 +173,15 @@ class GrafanaDashboardContractTest {
             if (expectedUnits.containsKey(title)) {
                 assertThat(panel.path("fieldConfig").path("defaults").path("unit").asText())
                         .isEqualTo(expectedUnits.get(title));
+            }
+            if (title.equals("Stuck payment outbox events")) {
+                JsonNode mappings = panel.path("fieldConfig").path("defaults").path("mappings");
+                assertThat(mappings).hasSize(1);
+                assertThat(mappings.get(0).path("type").asText()).isEqualTo("special");
+                assertThat(mappings.get(0).path("options").path("match").asText())
+                        .isEqualTo("null+nan");
+                assertThat(mappings.get(0).path("options").path("result").path("text").asText())
+                        .isEqualTo("No data");
             }
         }
         assertThat(titles).containsExactly(
@@ -175,7 +193,10 @@ class GrafanaDashboardContractTest {
                 "HTTP request outcomes",
                 "Average HTTP duration",
                 "JVM heap used",
-                "Live JVM threads");
+                "Live JVM threads",
+                "Outbox retries in range",
+                "Duplicate payment events in range",
+                "Stuck payment outbox events");
 
         List<String> variableNames = StreamSupport.stream(
                         dashboard.path("templating").path("list").spliterator(), false)

@@ -276,4 +276,5 @@ schema-migration qualification remain separate work; relying on
 - [x] Add mutually exclusive external RS256 JWT identity with issuer, audience, subject, and scope validation.
 - [x] Add route-scoped trusted-proxy HTTPS scheme support for operator routes.
 - Add independently available delivery and MySQL qualification.
-- Add dashboard panels for retry count, duplicate events, and stuck payments.
+- [x] Add zero-tag dashboard metrics for automatic retry schedules, accepted
+  exact duplicate events, and non-exhausted old `PENDING` outbox events.

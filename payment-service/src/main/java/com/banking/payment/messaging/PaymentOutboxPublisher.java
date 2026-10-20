@@ -3,6 +3,7 @@ package com.banking.payment.messaging;
 import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.observability.PaymentBusinessMetrics;
 import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,7 @@ public class PaymentOutboxPublisher {
     private final PaymentOutboxRepository paymentOutboxRepository;
     private final PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final PaymentBusinessMetrics businessMetrics;
     private final long sendTimeoutMs;
     private final long retryDelayMs;
     private final long maxRetryDelayMs;
@@ -35,6 +37,7 @@ public class PaymentOutboxPublisher {
             PaymentOutboxRepository paymentOutboxRepository,
             PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository,
             KafkaTemplate<String, String> kafkaTemplate,
+            PaymentBusinessMetrics businessMetrics,
             @Value("${payment.outbox.send-timeout-ms:5000}") long sendTimeoutMs,
             @Value("${payment.outbox.retry-delay-ms:5000}") long retryDelayMs,
             @Value("${payment.outbox.max-retry-delay-ms:300000}") long maxRetryDelayMs,
@@ -44,6 +47,7 @@ public class PaymentOutboxPublisher {
                 paymentOutboxRepository,
                 deadLetterHandoffRepository,
                 kafkaTemplate,
+                businessMetrics,
                 sendTimeoutMs,
                 retryDelayMs,
                 maxRetryDelayMs,
@@ -56,6 +60,7 @@ public class PaymentOutboxPublisher {
             PaymentOutboxRepository paymentOutboxRepository,
             PaymentOutboxDeadLetterHandoffRepository deadLetterHandoffRepository,
             KafkaTemplate<String, String> kafkaTemplate,
+            PaymentBusinessMetrics businessMetrics,
             long sendTimeoutMs,
             long retryDelayMs,
             long maxRetryDelayMs,
@@ -66,6 +71,7 @@ public class PaymentOutboxPublisher {
         this.paymentOutboxRepository = paymentOutboxRepository;
         this.deadLetterHandoffRepository = deadLetterHandoffRepository;
         this.kafkaTemplate = kafkaTemplate;
+        this.businessMetrics = Objects.requireNonNull(businessMetrics);
         this.sendTimeoutMs = sendTimeoutMs;
         this.retryDelayMs = retryDelayMs;
         this.maxRetryDelayMs = maxRetryDelayMs;
@@ -143,6 +149,7 @@ public class PaymentOutboxPublisher {
                 failedAt.plusMillis(retryDelayFor(failedAttempt)),
                 errorType
         );
+        businessMetrics.recordAutomaticRetry();
         event.getPayment().setStatus("PENDING_RETRY");
     }
 

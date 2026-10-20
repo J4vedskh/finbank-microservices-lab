@@ -1,6 +1,7 @@
 package com.banking.transaction.service;
 
 import com.banking.transaction.entity.Transaction;
+import com.banking.transaction.observability.TransactionBusinessMetrics;
 import com.banking.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +35,9 @@ class TransactionServiceTest {
     @Mock
     private TransactionRepository transactionRepository;
 
+    @Mock
+    private TransactionBusinessMetrics businessMetrics;
+
     @InjectMocks
     private TransactionService transactionService;
 
@@ -59,6 +63,7 @@ class TransactionServiceTest {
         assertThat(persisted.getStatus()).isEqualTo("COMPLETED");
         assertThat(persisted.getCreatedAt()).isNotNull();
         assertThat(result).isSameAs(persisted);
+        verifyNoInteractions(businessMetrics);
     }
 
     @Test
@@ -69,6 +74,7 @@ class TransactionServiceTest {
         Transaction result = transactionService.recordPaymentEvent("42|1|2|750.00");
 
         assertThat(result).isSameAs(existing);
+        verify(businessMetrics).recordDuplicateEvent();
         verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
     }
 
@@ -81,6 +87,7 @@ class TransactionServiceTest {
                 .isInstanceOf(PaymentEventConflictException.class)
                 .hasMessage("Payment event 42 conflicts with its existing ledger entry");
 
+        verifyNoInteractions(businessMetrics);
         verify(transactionRepository, never()).saveAndFlush(any(Transaction.class));
     }
 
@@ -96,6 +103,7 @@ class TransactionServiceTest {
         Transaction result = transactionService.recordPaymentEvent("42|1|2|750.00");
 
         assertThat(result).isSameAs(existing);
+        verify(businessMetrics).recordDuplicateEvent();
     }
 
     @Test
@@ -110,6 +118,7 @@ class TransactionServiceTest {
         assertThatThrownBy(() -> transactionService.recordPaymentEvent("42|1|2|750.00"))
                 .isInstanceOf(PaymentEventConflictException.class)
                 .hasMessage("Payment event 42 conflicts with its existing ledger entry");
+        verifyNoInteractions(businessMetrics);
     }
 
     @Test
@@ -121,6 +130,7 @@ class TransactionServiceTest {
 
         assertThatThrownBy(() -> transactionService.recordPaymentEvent("42|1|2|750.00"))
                 .isSameAs(failure);
+        verifyNoInteractions(businessMetrics);
     }
 
     @ParameterizedTest
@@ -147,6 +157,7 @@ class TransactionServiceTest {
                 .isInstanceOf(MalformedPaymentEventException.class)
                 .hasMessageStartingWith("Invalid payment event:");
 
+        verifyNoInteractions(businessMetrics);
         verifyNoInteractions(transactionRepository);
     }
 
@@ -159,6 +170,7 @@ class TransactionServiceTest {
         assertThatThrownBy(() -> transactionService.recordPaymentEvent("42|1|2|750.00"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database unavailable");
+        verifyNoInteractions(businessMetrics);
     }
 
     @Test

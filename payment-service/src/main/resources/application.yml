@@ -19,6 +19,8 @@ management:
       exposure:
         include: "*"
 payment:
+  observability:
+    stuck-after-ms: ${PAYMENT_STUCK_AFTER_MS:300000}
   recovery:
     authentication:
       mode: ${PAYMENT_RECOVERY_AUTHENTICATION_MODE:basic}

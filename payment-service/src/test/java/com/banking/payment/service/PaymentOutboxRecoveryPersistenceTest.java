@@ -6,6 +6,7 @@ import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxRecoveryAudit;
 import com.banking.payment.entity.PaymentOutboxStatus;
 import com.banking.payment.messaging.PaymentOutboxPublisher;
+import com.banking.payment.observability.PaymentBusinessMetrics;
 import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryAuditRepository;
 import com.banking.payment.repository.PaymentOutboxRecoveryRejectionAuditRepository;
@@ -77,6 +78,9 @@ class PaymentOutboxRecoveryPersistenceTest {
     @MockBean
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @MockBean
+    private PaymentBusinessMetrics businessMetrics;
+
     @AfterEach
     void clearCommittedFixtures() {
         deadLetterHandoffRepository.deleteAllInBatch();
@@ -92,7 +96,7 @@ class PaymentOutboxRecoveryPersistenceTest {
         Long paymentId = event.getPayment().getId();
         Instant exhaustedAt = event.getExhaustedAt();
         int attemptCount = event.getAttemptCount();
-        Instant beforeRecovery = Instant.now();
+        Instant beforeRecovery = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
         PaymentOutboxRecoveryAudit audit = recoveryService
                 .requeueExhausted(event.getId(), COMMAND_KEY, ACTOR, REASON);
