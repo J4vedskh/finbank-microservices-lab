@@ -54,6 +54,7 @@ gantt
 | 27 | Completed: add single-resource transaction lookup with safe public `404` Problem Details |
 | 28 | Completed: expose framework Prometheus metrics through the local Actuator endpoint in all three services |
 | 29 | Completed: add a deployment-independent, importable Grafana runtime-dashboard starter using verified framework metrics |
+| 30 | Completed: add zero-tag payment retry, duplicate-event, and old pending-outbox metrics with Grafana panels |
 
 ## Commit Standard
 

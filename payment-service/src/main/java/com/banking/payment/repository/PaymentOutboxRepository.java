@@ -30,6 +30,11 @@ public interface PaymentOutboxRepository extends JpaRepository<PaymentOutboxEven
             """)
     Optional<PaymentOutboxEvent> findByIdForUpdate(@Param("eventId") Long eventId);
 
+    long countByStatusAndExhaustedAtIsNullAndCreatedAtBefore(
+            PaymentOutboxStatus status,
+            Instant cutoff
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<PaymentOutboxEvent>
     findByStatusAndPublishedAtLessThanOrderByPublishedAtAscIdAsc(

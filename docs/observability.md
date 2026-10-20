@@ -54,9 +54,21 @@ Actuator metrics at the following local endpoints:
 | Transaction Service | `http://localhost:8083/actuator/prometheus` |
 
 These endpoints expose framework and runtime signals, such as HTTP, JVM, and
-process metrics. They do not yet include custom business metrics, dashboards,
-or screenshots. The payment service allowlists this exact Prometheus endpoint,
-so the local request does not require operator credentials.
+process metrics. The payment and transaction services also publish three
+business metrics without custom tags:
+
+| Prometheus metric | Meaning |
+| --- | --- |
+| `finbank_payment_outbox_retries_total` | Automatic retries scheduled after failed publish attempts. Terminal exhaustion and operator recovery are excluded. |
+| `finbank_transaction_duplicate_events_total` | Exact payment-event replays accepted without a second ledger entry. Conflicting duplicates are excluded. |
+| `finbank_payment_outbox_stuck` | Non-exhausted `PENDING` outbox events created before the configured age cutoff. |
+
+The stuck-event threshold defaults to 300000 ms and can be changed with
+`PAYMENT_STUCK_AFTER_MS`. The gauge is an operational indicator, not proof of a
+stuck customer payment or Kafka non-delivery. A repository read failure exports
+`NaN`, and the dashboard maps null or `NaN` to **No data** instead of reporting
+a false zero. The payment service allowlists this exact Prometheus endpoint, so
+the local request does not require operator credentials.
 
 Treat all three endpoints as operational surfaces and keep them behind trusted
 network access. The account and transaction services do not add application
@@ -77,14 +89,15 @@ to `/actuator/prometheus` when platform work is released.
 ## Grafana Runtime Dashboard
 
 The repository includes an importable, deployment-independent runtime overview
-starter with nine panels, `$service_group`, `$job`, and `$instance` filters, and only verified
-framework metrics. Its `$service_group` filter defaults to the existing
+starter with twelve panels, `$service_group`, `$job`, and `$instance` filters,
+verified framework metrics, and the three zero-tag business metrics above. Its
+`$service_group` filter defaults to the existing
 `microservices` scrape label so a shared datasource does not mix unrelated
 targets into FinBank results. The `group` label key is a portability prerequisite;
 a deployment with another key must adapt the JSON selectors. See the [Grafana dashboard guide](grafana-dashboard.md) for
 the import steps, panel meanings, accessibility cues, and the difference
 between zero and **No data**. Its HTTP duration panel shows a mean, not p95,
-and it creates no alerts or custom business metrics.
+and it creates no alerts.
 
 Because the held Kubernetes Prometheus manifest still scrapes `/metrics`, a
 Kubernetes-backed import will show **DOWN** or **No data** until that scrape
@@ -118,6 +131,7 @@ sequenceDiagram
     Ledger-->>Payments: Future status callback or query path
 ```
 
-The runtime export and a deployment-independent dashboard starter are available
-locally. The next observability work is to align the held Kubernetes scrape
-configuration, verify it with a live dashboard screenshot, then add tracing.
+The runtime export, bounded business metrics, and a deployment-independent
+dashboard starter are available locally. The next observability work is to align
+the held Kubernetes scrape configuration, verify it with a live dashboard
+screenshot, then add tracing.

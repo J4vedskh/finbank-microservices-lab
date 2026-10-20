@@ -244,10 +244,29 @@ curl --fail http://localhost:8082/actuator/prometheus
 curl --fail http://localhost:8083/actuator/prometheus
 ```
 
-Each endpoint returns framework/runtime metrics. The payment service
-allowlists exactly `/actuator/prometheus`, so this local verification does not
-need operator credentials. Do not use the legacy `/metrics` route: it returns
-`404`.
+Each endpoint returns framework/runtime metrics. The payment and transaction
+endpoints also expose their business metrics:
+
+```bash
+curl --fail http://localhost:8082/actuator/prometheus | rg 'finbank_payment_outbox_(retries_total|stuck)'
+curl --fail http://localhost:8083/actuator/prometheus | rg 'finbank_transaction_duplicate_events_total'
+```
+
+`PAYMENT_STUCK_AFTER_MS` defaults to `300000`. The gauge counts non-exhausted
+`PENDING` outbox events with `createdAt` older than that threshold, including
+pending retries; it is not a customer-facing SLA result. The application meters
+add no custom tags. Prometheus still supplies the bounded scrape-target labels
+used by the dashboard filters. A repository read failure exports `NaN`, which
+the stuck-outbox panel maps to **No data** rather than a false zero.
+
+Before production-scale use, qualify the scrape-time count with representative
+MySQL volume. If the query plan scans too many rows, add a reviewed
+`(status, exhausted_at, created_at)` index through the normal schema-migration
+process.
+
+The payment service allowlists exactly `/actuator/prometheus`, so this local
+verification does not need operator credentials. Do not use the legacy
+`/metrics` route: it returns `404`.
 
 Keep these operational endpoints on a trusted network. The account and
 transaction services do not add application authentication, and the payment
@@ -268,14 +287,14 @@ The `$service_group` filter defaults to the repository's `microservices` scrape
 label; select the matching FinBank group first if your Prometheus labels differ.
 If the target label key itself is not `group`, adapt the dashboard JSON selectors
 before import; choosing another value cannot repair a missing or renamed key.
-The [Grafana dashboard guide](grafana-dashboard.md) lists all nine panels and
+The [Grafana dashboard guide](grafana-dashboard.md) lists all twelve panels and
 explains its direct **UP**, **DOWN**, and **No data** states.
 
 Until the held Kubernetes scrape path changes from `/metrics` to
 `/actuator/prometheus`, imported Kubernetes-backed panels are expected to show
 **DOWN** or **No data**. Do not interpret that as zero traffic or create a live
 screenshot from it. The overview displays a mean HTTP duration, not p95, and
-contains neither alerts nor custom business metrics.
+contains no alerts.
 
 ## Local Infrastructure
 

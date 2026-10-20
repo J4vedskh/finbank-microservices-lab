@@ -4,15 +4,18 @@ FinBank includes an importable Grafana starter dashboard at
 [`ops/grafana/finbank-service-overview.json`](https://github.com/J4vedskh/finbank-microservices-lab/blob/main/ops/grafana/finbank-service-overview.json).
 It is deployment-independent: import it into a Grafana instance that already
 has a Prometheus data source, then choose that source when Grafana asks for it.
-The JSON does not add provisioning, containers, Kubernetes resources, alert
-rules, or custom business metrics.
+The JSON does not add provisioning, containers, Kubernetes resources, or alert
+rules.
 
 ## Before You Import
 
-The dashboard reads only the default metrics that the three Spring Boot
-services export through `/actuator/prometheus`. It uses the Prometheus `up`,
+The dashboard reads metrics that the three Spring Boot services export through
+`/actuator/prometheus`. It uses the Prometheus `up`,
 `http_server_requests_seconds_*`, `process_uptime_seconds`,
-`jvm_memory_used_bytes`, and `jvm_threads_live_threads` metrics.
+`jvm_memory_used_bytes`, and `jvm_threads_live_threads` metrics. It also uses
+the zero-tag `finbank_payment_outbox_retries_total`,
+`finbank_transaction_duplicate_events_total`, and
+`finbank_payment_outbox_stuck` business metrics.
 
 The held Kubernetes Prometheus configuration still scrapes `/metrics`, while
 the services export at `/actuator/prometheus`. Until that held platform change
@@ -40,7 +43,7 @@ label must select its FinBank group before interpreting the panels. If the
 Prometheus target label key is renamed or absent, adapt the dashboard JSON's
 `group` selectors first; choosing another value cannot repair a missing key.
 
-The dashboard contains nine panels:
+The dashboard contains twelve panels:
 
 | Panel | What it shows |
 | --- | --- |
@@ -53,6 +56,9 @@ The dashboard contains nine panels:
 | Average HTTP duration | Mean request duration by target. This is an average, **not p95**. |
 | JVM heap used | Current heap memory used by target. |
 | Live JVM threads | Current live-thread count by target. |
+| Outbox retries in range | Automatic payment-outbox retries scheduled in the chosen time range; terminal exhaustion and manual recovery are excluded. |
+| Duplicate payment events in range | Exact replays accepted without another ledger entry in the chosen time range; conflicts remain errors. |
+| Stuck payment outbox events | Non-exhausted `PENDING` outbox events older than `PAYMENT_STUCK_AFTER_MS`, which defaults to 300000 ms. |
 
 ## Reading the Dashboard Safely
 
@@ -60,6 +66,8 @@ Zero means Prometheus returned a real zero value. **No data** means there was
 no usable matching time series, which can result from unavailable scraping, an
 unavailable data source, or filters that match no target. Start with **Scrape
 health** and **Selected targets** before interpreting the application panels.
+The stuck-outbox metric exports `NaN` if its repository read fails; its panel
+maps null or `NaN` to **No data** so a read failure is never presented as zero.
 
 Panel colors are supporting cues, not the only message. The health panel uses
 explicit **UP** and **DOWN** text; every panel has a title, description, legend
@@ -71,7 +79,8 @@ technology users through the Grafana interface.
 
 This is a runtime overview starter only. It does not calculate percentiles,
 provide p95 latency, create alerts, prove a live Grafana deployment, or show
-payment, ledger, Kafka, database, or other custom business metrics. No live
-screenshot is included or claimed. A verified screenshot remains pending until
-the held Kubernetes scrape-path alignment allows the service targets to be
-scraped successfully.
+other payment, ledger, Kafka, or database metrics. The stuck-outbox panel is an
+age-based operational indicator, not proof of customer impact or Kafka
+non-delivery. No live screenshot is included or claimed. A verified screenshot
+remains pending until the held Kubernetes scrape-path alignment allows the
+service targets to be scraped successfully.

@@ -4,6 +4,7 @@ import com.banking.payment.entity.Payment;
 import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.observability.PaymentBusinessMetrics;
 import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import com.banking.payment.repository.PaymentRepository;
@@ -56,6 +57,9 @@ class PaymentOutboxPublisherPersistenceTest {
 
     @MockBean
     private KafkaTemplate<String, String> kafkaTemplate;
+
+    @MockBean
+    private PaymentBusinessMetrics businessMetrics;
 
     @Test
     void publishNext_acknowledgementPersistsPublishedState() {

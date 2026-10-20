@@ -4,6 +4,7 @@ import com.banking.payment.entity.Payment;
 import com.banking.payment.entity.PaymentOutboxDeadLetterHandoff;
 import com.banking.payment.entity.PaymentOutboxEvent;
 import com.banking.payment.entity.PaymentOutboxStatus;
+import com.banking.payment.observability.PaymentBusinessMetrics;
 import com.banking.payment.repository.PaymentOutboxDeadLetterHandoffRepository;
 import com.banking.payment.repository.PaymentOutboxRepository;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,9 @@ class PaymentOutboxPublisherTest {
     @Mock
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @Mock
+    private PaymentBusinessMetrics businessMetrics;
+
     @Test
     void publishNext_noDueEvent_returnsFalseWithoutKafkaInteraction() {
         PaymentOutboxPublisher publisher = publisher();
@@ -62,7 +66,7 @@ class PaymentOutboxPublisherTest {
         boolean processed = publisher.publishNext();
 
         assertThat(processed).isFalse();
-        verifyNoInteractions(kafkaTemplate, deadLetterHandoffRepository);
+        verifyNoInteractions(kafkaTemplate, deadLetterHandoffRepository, businessMetrics);
     }
 
     @Test
@@ -86,7 +90,7 @@ class PaymentOutboxPublisherTest {
         assertThat(event.getPublishedAt()).isNotNull();
         assertThat(event.getLastError()).isNull();
         assertThat(event.getPayment().getStatus()).isEqualTo("PUBLISHED");
-        verifyNoInteractions(deadLetterHandoffRepository);
+        verifyNoInteractions(deadLetterHandoffRepository, businessMetrics);
     }
 
     @Test
@@ -113,6 +117,7 @@ class PaymentOutboxPublisherTest {
         assertThat(event.getLastError()).isEqualTo("IllegalStateException");
         assertThat(event.getLastError()).doesNotContain("secret broker detail");
         assertThat(event.getPayment().getStatus()).isEqualTo("PENDING_RETRY");
+        verify(businessMetrics).recordAutomaticRetry();
         verifyNoInteractions(deadLetterHandoffRepository);
     }
 
@@ -190,6 +195,7 @@ class PaymentOutboxPublisherTest {
         assertThat(event.getLastError()).isEqualTo("IllegalStateException");
         assertThat(event.getPayment().getStatus()).isEqualTo("PUBLISH_EXHAUSTED");
         assertThat(event.getExhaustionSequence()).isEqualTo(1);
+        verifyNoInteractions(businessMetrics);
         verify(kafkaTemplate, times(1)).send("payments", "42", "42|1|2|750.00");
         verifyNoMoreInteractions(kafkaTemplate);
         ArgumentCaptor<PaymentOutboxDeadLetterHandoff> handoffCaptor =
@@ -224,6 +230,7 @@ class PaymentOutboxPublisherTest {
         assertThat(event.getLastError()).isEqualTo("Failure3");
         assertThat(event.getPayment().getStatus()).isEqualTo("PUBLISH_EXHAUSTED");
         assertThat(event.getExhaustionSequence()).isEqualTo(1);
+        verifyNoInteractions(businessMetrics);
         verifyNoInteractions(kafkaTemplate);
         ArgumentCaptor<PaymentOutboxDeadLetterHandoff> handoffCaptor =
                 ArgumentCaptor.forClass(PaymentOutboxDeadLetterHandoff.class);
@@ -296,6 +303,7 @@ class PaymentOutboxPublisherTest {
                 paymentOutboxRepository,
                 deadLetterHandoffRepository,
                 kafkaTemplate,
+                businessMetrics,
                 sendTimeoutMs,
                 retryDelayMs,
                 maxRetryDelayMs,
@@ -317,6 +325,7 @@ class PaymentOutboxPublisherTest {
                 paymentOutboxRepository,
                 deadLetterHandoffRepository,
                 kafkaTemplate,
+                businessMetrics,
                 1_000,
                 retryDelayMs,
                 maxRetryDelayMs,
