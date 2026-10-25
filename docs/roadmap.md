@@ -5,19 +5,19 @@ without sacrificing code quality.
 
 ```mermaid
 gantt
-    title 60-day portfolio growth path
+    title Historical 60-day portfolio growth plan
     dateFormat  YYYY-MM-DD
     section Foundation
     Buildable scaffold and docs portal      :done, foundation, 2026-05-27, 3d
-    Service validation and DTOs             :active, dto, 2026-05-30, 7d
+    Service validation and DTOs             :done, dto, 2026-05-30, 7d
     section Platform
     Docker Compose hardening                :compose, after dto, 7d
     Kubernetes manifests and probes         :k8s, after compose, 10d
     section Quality
-    Unit and integration tests              :tests, 2026-06-03, 20d
+    Unit and integration tests              :done, tests, 2026-06-03, 20d
     CI quality gates                        :ci, after tests, 7d
     section Observability
-    Prometheus metrics and dashboards       :metrics, 2026-06-15, 12d
+    Local metrics and dashboard starter     :done, metrics, 2026-06-15, 12d
     OpenTelemetry tracing                   :tracing, after metrics, 10d
 ```
 
