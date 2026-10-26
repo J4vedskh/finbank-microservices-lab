@@ -4,7 +4,11 @@ FinBank treats observability as part of the service design, not an afterthought.
 The goal is to make payment behavior, customer-facing latency, ledger outcomes,
 and platform health easy to inspect from the first portfolio demo.
 
-## Signal Ownership
+The design sections below describe the target operating model. Verified current
+coverage is documented separately under [Current Runtime Export](#current-runtime-export)
+and [Grafana Runtime Dashboard](#grafana-runtime-dashboard).
+
+## Target Signal Ownership
 
 | Signal | Owner | First useful view | Why it matters |
 | --- | --- | --- | --- |
@@ -15,7 +19,11 @@ and platform health easy to inspect from the first portfolio demo.
 | Database health | Platform | Connection pool usage and query errors | Catches saturation before requests fail. |
 | Trace spans | All services | Cross-service payment timeline | Explains where a payment spent time. |
 
-## Signal Flow
+## Target Signal Flow
+
+This diagram is the intended end state. It does not claim that the services
+currently emit OpenTelemetry spans or that an external telemetry backend is
+running.
 
 ```mermaid
 flowchart LR
@@ -33,7 +41,11 @@ flowchart LR
     Traces --> Jaeger["Jaeger trace search"]
 ```
 
-## Dashboard Slices
+## Target Dashboard Slices
+
+These are desired dashboard slices, not a list of the panels in the checked-in
+starter. The starter's verified twelve-panel coverage is described below and in
+the [Grafana dashboard guide](grafana-dashboard.md#filters-and-panels).
 
 | Dashboard | Panels |
 | --- | --- |
@@ -105,6 +117,10 @@ path is released and aligned. No live dashboard screenshot is claimed.
 
 ## Alert Candidates
 
+These are future design candidates. The repository does not create alert rules,
+and some triggers require signals that are not part of the current export or
+dashboard starter.
+
 | Alert | Trigger | Severity |
 | --- | --- | --- |
 | Payment API error spike | 5xx rate above 2 percent for 10 minutes | High |
@@ -114,6 +130,9 @@ path is released and aligned. No live dashboard screenshot is claimed.
 | Slow customer route | p95 latency above 750 ms for 15 minutes | Medium |
 
 ## Trace Roadmap
+
+The sequence below is planned behavior; the services do not yet include tracing
+instrumentation or context propagation.
 
 ```mermaid
 sequenceDiagram
