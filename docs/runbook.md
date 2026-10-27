@@ -303,8 +303,23 @@ docker-compose up -d
 ```
 
 The compose file starts MySQL, Kafka, Zookeeper, Prometheus, Grafana, and Jaeger.
+It does not start the three FinBank Spring Boot services or provide a complete
+end-to-end local environment.
 
-## Kubernetes
+## Kubernetes Starter Manifests
+
+The apply order below is future reference, not a verified deployment procedure.
+The starter manifests still use placeholder service images, omit in-cluster
+Kafka and database initialization, use inline development credentials and
+ephemeral MySQL storage, expose only ClusterIP services, and lack health probes
+and resource limits. The repository also has no Kubernetes Prometheus workload,
+and its scrape configuration must be aligned to `/actuator/prometheus`.
+
+Do not treat this as a runnable Minikube quick start. When the platform hold is
+released, the deployment procedure must add the missing prerequisites and
+readiness gates before these resources are applied. The five currently tracked
+manifest files are listed below for reference only; this is not a complete
+deployment sequence:
 
 ```bash
 kubectl apply -f k8s/namespace.yaml
