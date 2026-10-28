@@ -100,7 +100,13 @@ the payment records. A separate limited batch removes old minimal
 rejection-journal rows. Pending, retrying, and publication-exhausted events all
 remain nonterminal `PENDING` rows and never qualify.
 
-## Deployment Topology
+## Target Deployment Topology
+
+This diagram is the intended cluster shape. The current `k8s/` directory is a
+held starter scaffold with placeholder service images and without in-cluster
+Kafka, database initialization, or a Kubernetes Prometheus workload. The
+[runbook](runbook.md#kubernetes-starter-manifests) records the full current
+boundary.
 
 ```mermaid
 flowchart TB
@@ -110,6 +116,7 @@ flowchart TB
         PaymentPod["payment-service deployment"]
         TransactionPod["transaction-service deployment"]
         MySQLPod["mysql deployment"]
+        KafkaPod["Kafka broker"]
         PrometheusPod["prometheus"]
     end
 
@@ -119,12 +126,18 @@ flowchart TB
     AccountPod --> MySQLPod
     PaymentPod --> MySQLPod
     TransactionPod --> MySQLPod
+    PaymentPod --> KafkaPod
+    KafkaPod --> TransactionPod
     PrometheusPod --> AccountPod
     PrometheusPod --> PaymentPod
     PrometheusPod --> TransactionPod
 ```
 
-## Observability View
+## Target Observability View
+
+This is the planned telemetry flow. Verified current scope is direct local
+Actuator export plus an importable Grafana dashboard starter; live cluster
+scraping, a deployed dashboard, structured logging, and tracing are not claimed.
 
 ```mermaid
 flowchart LR
