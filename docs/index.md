@@ -18,12 +18,18 @@ Payment creation atomically stores a durable outbox event. A scheduled relay
 publishes it to Kafka for the transaction service.
 </div>
 <div class="hero-card" markdown>
-**Platform ready**
+**Platform roadmap**
 
-Docker, Kubernetes manifests, Prometheus, Grafana, Jaeger, and CI/CD are part of
-the roadmap.
+Starter Docker and Kubernetes assets plus Prometheus, Grafana, Jaeger, and CI/CD
+work are tracked with explicit readiness limits in the roadmap and runbook.
 </div>
 </div>
+
+## Target Architecture
+
+This is the intended system shape, not evidence of a verified live Kubernetes,
+Prometheus, or Grafana deployment. See the [runbook](runbook.md#kubernetes-starter-manifests)
+for the current starter-manifest boundaries.
 
 ```mermaid
 flowchart LR
